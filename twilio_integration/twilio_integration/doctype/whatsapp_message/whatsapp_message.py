@@ -22,11 +22,11 @@ class WhatsAppMessage(Document):
 			self.id = response.sid
 			self.send_on = response.date_sent
 			self.save(ignore_permissions=True)
-		
+
 		except Exception as e:
 			self.db_set('status', "Error")
-			frappe.log_error(e, title = _('Twilio WhatsApp Message Error'))
-	
+			frappe.log_error(title = _('Twilio WhatsApp Message Error'),message=e)
+
 	def get_message_dict(self):
 		args = {
 			'from_': self.from_,
@@ -40,15 +40,26 @@ class WhatsAppMessage(Document):
 		return args
 
 	@classmethod
-	def send_whatsapp_message(self, receiver_list, message, doctype, docname, media=None):
+	def send_whatsapp_message(self, receiver_list, message, doctype, docname,notification_type=None, media=None):
+		from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
+
 		if isinstance(receiver_list, string_types):
 			receiver_list = loads(receiver_list)
 			if not isinstance(receiver_list, list):
 				receiver_list = [receiver_list]
+		doc = get_doc_for_notification_triggers(doctype, docname)
+
+		run_before_send_method(doc=doc,notification_type=notification_type)
+
+		if are_whatsapp_messages_muted():
+			frappe.msgprint(_("Whatsapp is muted"))
+			return
 
 		for rec in receiver_list:
 			message = self.store_whatsapp_message(rec, message, doctype, docname)
 			message.send()
+
+		run_after_send_method(doctype=doctype, docname=docname, notification_type=notification_type)
 
 	def store_whatsapp_message(to, message, doctype=None, docname=None, media=None):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
@@ -76,4 +87,31 @@ def incoming_message_callback(args):
 			'send_on': frappe.utils.now(),
 			'status': 'Received'
 		}).insert(ignore_permissions=True)
+
+def run_before_send_method(doc=None, notification_type=None):
+	from frappe.email.doctype.notification.notification import run_validate_notification
+
+	if doc and notification_type:
+		validation = run_validate_notification(
+			doc, notification_type, throw=True
+		)
+		if not validation:
+			frappe.throw(_("{0} Notification Validation Failed").format(notification_type))
+
+def run_after_send_method(doctype=None, docname=None, notification_type=None):
+	from frappe.core.doctype.notification_count.notification_count import add_notification_count
+
+	if doctype and docname and notification_type:
+		add_notification_count(doctype, docname, notification_type, 'WhatsApp')
+
+def are_whatsapp_messages_muted():
+	from frappe.utils import cint
+
+	try:
+		if getattr(frappe.flags, "mute_whatsapp", None):
+			return True
+	except RuntimeError:
+		pass
+
+	return cint(frappe.conf.get("mute_whatsapp") or 0) or False
 
