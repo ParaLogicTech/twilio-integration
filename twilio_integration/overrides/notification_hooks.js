@@ -1,15 +1,4 @@
 frappe.ui.form.on('Notification', {
-	onload: function(frm) {
-		frm.set_query('twilio_number', function() {
-			return {
-				filters: {
-					communication_channel: "Twilio",
-					communication_medium_type: "WhatsApp"
-				}
-			};
-		});
-	},
-
 	refresh: function(frm) {
 		frm.events.setup_whatsapp_template(frm);
 	},
@@ -31,6 +20,5 @@ Your appointment is coming up on {{ doc.date }} at {{ doc.time }}
 		if (template) {
 			frm.set_df_property('message_examples', 'options', template);
 		}
-
 	}
 });
