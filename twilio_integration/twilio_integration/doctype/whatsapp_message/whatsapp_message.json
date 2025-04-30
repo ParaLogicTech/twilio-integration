@@ -15,7 +15,8 @@
   "send_on",
   "reference_doctype",
   "reference_document_name",
-  "profile_name"
+  "profile_name",
+  "communication"
  ],
  "fields": [
   {
@@ -82,13 +83,21 @@
    "fieldname": "profile_name",
    "fieldtype": "Data",
    "label": "Profile Name"
+  },
+  {
+   "fieldname": "communication",
+   "fieldtype": "Link",
+   "label": "Communication",
+   "options": "Communication",
+   "read_only": 1,
+   "search_index": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2021-07-08 01:09:24.002941",
+ "modified": "2025-04-30 22:53:46.817257",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
@@ -110,5 +119,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
+ "states": [],
  "track_changes": 1
 }
