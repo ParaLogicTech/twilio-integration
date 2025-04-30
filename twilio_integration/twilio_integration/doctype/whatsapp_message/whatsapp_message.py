@@ -40,7 +40,7 @@ class WhatsAppMessage(Document):
 		return args
 
 	@classmethod
-	def send_whatsapp_message(self, receiver_list, message, doctype, docname,notification_type=None, media=None):
+	def send_whatsapp_message(self, receiver_list, message, doctype, docname, notification_type=None, media=None):
 		from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
 
 		if isinstance(receiver_list, string_types):

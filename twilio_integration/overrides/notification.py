@@ -12,11 +12,12 @@ from frappe.email.doctype.notification.notification import (
 
 class SendNotification(Notification):
 	def validate(self):
+		super().validate()
 		self.validate_twilio_settings()
 
 	def validate_twilio_settings(self):
 		if self.enabled and self.channel == "WhatsApp":
-			twilio_settings = frappe.get_doc("Twilio Settings")
+			twilio_settings = frappe.get_single("Twilio Settings")
 			if not twilio_settings.enabled:
 				frappe.throw(_("Twilio Settings must be enabled to send WhatsApp notifications."))
 			if not twilio_settings.whatsapp_no:
@@ -25,7 +26,7 @@ class SendNotification(Notification):
 	def send(self, doc, context=None):
 
 		if not context:
-			context = get_context(doc)
+			context = {}
 
 		context.update({"doc": doc, "alert": self, "comments": None})
 
@@ -35,49 +36,54 @@ class SendNotification(Notification):
 		if self.is_standard:
 			self.load_standard_properties(context)
 
+		ref_doctype = get_reference_doctype(doc)
+		ref_name = get_reference_name(doc)
+
 		try:
-			if self.channel == 'WhatsApp' and self.enabled:
-				self.send_whatsapp_msg(doc, context)
+			if self.channel == 'WhatsApp':
+				self.send_whatsapp_msg(doc, ref_doctype, ref_name, context)
 		except Exception as e:
 			frappe.log_error(
 				message=frappe.get_traceback(),
-				title=_("Failed to send WhatsApp Notification: {0} for {1} {2}").format(self.name, doc.doctype, doc.name)
+				title=_("Failed to send WhatsApp Notification: {0} for {1} {2}").format(self.name, ref_doctype, ref_name)
 			)
 
 		super(SendNotification, self).send(doc,context=context)
 
-	def send_whatsapp_msg(self, doc, context):
-		notification_type = self.get_notification_type()
-		receiver_list = self.get_receiver_list(doc, context)
+	def send_whatsapp_msg(self, doc, ref_doctype, ref_name, context):
+		try:
+			notification_type = self.get_notification_type()
+			receiver_list = self.get_receiver_list(doc, context)
 
-		if not receiver_list:
-			return
+			if not receiver_list:
+				return
 
-		formatted_receiver_list = self.format_numbers_for_whatsapp(receiver_list)
+			formatted_receiver_list = self.format_numbers_for_whatsapp(receiver_list)
 
-		if not formatted_receiver_list:
-			return
+			if not formatted_receiver_list:
+				return
 
-		message_content = frappe.render_template(self.message, context)
+			message_content = frappe.render_template(self.message, context)
 
-		ref_doctype = get_reference_doctype(doc)
-		ref_name = get_reference_name(doc)
+			self.create_communication_for_whatsapp(doc, message=message_content, receiver_list= formatted_receiver_list)
 
-		self.create_communication(doc, message=message_content, receiver_list= formatted_receiver_list)
+			if notification_type:
+				set_notification_last_scheduled(ref_doctype, ref_name, notification_type, "WhatsApp")
 
-		if notification_type:
-			set_notification_last_scheduled(ref_doctype, ref_name, notification_type, "WhatsApp")
+			WhatsAppMessage.send_whatsapp_message(
+				receiver_list=formatted_receiver_list,
+				message=message_content,
+				doctype = ref_doctype,
+				docname = ref_name,
+				notification_type=notification_type
+			)
+		except Exception as e:
+			frappe.log_error(
+				message=frappe.get_traceback(),
+				title=_("Failed to send WhatsApp Notification: {0}").format(self.name)
+			)
 
-
-		WhatsAppMessage.send_whatsapp_message(
-			receiver_list=formatted_receiver_list,
-			message=message_content,
-			doctype = ref_doctype,
-			docname = ref_name,
-			notification_type=notification_type
-		)
-
-	def create_communication(self, doc, message=None, receiver_list=None):
+	def create_communication_for_whatsapp(self, doc, message=None, receiver_list=None):
 		try:
 			timeline_doctype, timeline_name = self.get_timeline_doctype_and_name(doc)
 
@@ -95,10 +101,11 @@ class SendNotification(Notification):
 				"phone_no": receiver_list[0] if len(receiver_list) == 1 else None
 			})
 
-			communication.append("timeline_links", {
-				"link_doctype": timeline_doctype,
-				"link_name": timeline_name
-			})
+			if timeline_doctype and timeline_name:
+				communication.append("timeline_links", {
+					"link_doctype": timeline_doctype,
+					"link_name": timeline_name
+				})
 
 			communication.insert(ignore_permissions=True)
 
