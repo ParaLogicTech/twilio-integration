@@ -51,6 +51,7 @@ class NotificationTwilio(Notification):
 	def send_whatsapp_msg(self, doc, context):
 		receiver_list = self.get_receiver_list(doc, context)
 		receiver_list = format_numbers_for_whatsapp(receiver_list)
+
 		if not receiver_list:
 			return
 
@@ -59,20 +60,35 @@ class NotificationTwilio(Notification):
 
 		message = frappe.render_template(self.message, context)
 
-		communication = self.create_communication_for_whatsapp(doc, message=message, receiver_list=receiver_list)
-
 		notification_type = self.get_notification_type()
+
 		if notification_type:
 			set_notification_last_scheduled(ref_doctype, ref_name, notification_type, "WhatsApp")
 
-		WhatsAppMessage.send_whatsapp_message(
-			receiver_list=receiver_list,
-			message=message,
-			doctype=ref_doctype,
-			docname=ref_name,
-			notification_type=notification_type,
-			communication=communication,
-		)
+		args = {
+			"receiver_list": receiver_list,
+			"message": message,
+			"doctype": ref_doctype,
+			"docname": ref_name,
+			"notification_type": notification_type
+		}
+
+		if self.use_whatsapp_template and self.whatsapp_template:
+			template = frappe.get_doc("WhatsApp Message Template", self.whatsapp_message_template)
+
+			content_variables = template.get_parameters_dict(context)
+
+			message = template.get_rendered_body(context)
+
+			args["message"] = None
+			args["template_sid"] = template.template_sid
+			args["template_body"] = message
+			args["content_variables"] = json.dumps(content_variables)
+
+		communication = self.create_communication_for_whatsapp(doc, message=message, receiver_list=receiver_list)
+		args["communication"] = communication
+
+		WhatsAppMessage.send_whatsapp_message(**args)
 
 	def create_communication_for_whatsapp(self, doc, message=None, receiver_list=None):
 		timeline_doctype, timeline_name = self.get_timeline_doctype_and_name(doc)

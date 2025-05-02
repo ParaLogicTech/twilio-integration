@@ -32,9 +32,17 @@ class WhatsAppMessage(Document):
 		args = {
 			'from_': self.from_,
 			'to': self.to,
-			'body': self.message,
-			'status_callback': '{}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback'.format(get_site_url(frappe.local.site))
+			'status_callback': '{}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback'.format(
+				get_site_url(frappe.local.site))
 		}
+
+		if self.template_sid:
+			args['content_sid'] = self.template_sid
+			if self.content_variables:
+				args['content_variables'] = self.content_variables
+		else:
+			args['body'] = self.message
+
 		if self.media_link:
 			args['media_url'] = [self.media_link]
 
@@ -44,12 +52,15 @@ class WhatsAppMessage(Document):
 	def send_whatsapp_message(
 		cls,
 		receiver_list,
-		message,
-		doctype,
-		docname,
+		message=None,
+		doctype=None,
+		docname=None,
 		notification_type=None,
 		media=None,
-		communication=None
+		communication=None,
+		template_sid=None,
+		content_variables=None,
+		template_body=None
 	):
 		from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
 
@@ -61,29 +72,53 @@ class WhatsAppMessage(Document):
 			receiver_list = json.loads(receiver_list)
 			if not isinstance(receiver_list, list):
 				receiver_list = [receiver_list]
+
 		doc = get_doc_for_notification_triggers(doctype, docname)
 
 		run_before_send_method(doc=doc, notification_type=notification_type)
 
 		for rec in receiver_list:
-			wa_msg = cls.store_whatsapp_message(rec, message,
-				doctype=doctype, docname=docname, media=media, communication=communication)
+			wa_msg = cls.store_whatsapp_message(
+				to=rec,
+				message=message,
+				doctype=doctype,
+				docname=docname,
+				media=media,
+				communication=communication,
+				template_sid=template_sid,
+				content_variables=content_variables,
+				template_body=template_body
+			)
 			wa_msg.send()
 
 		run_after_send_method(doctype=doctype, docname=docname, notification_type=notification_type)
 
 	@classmethod
-	def store_whatsapp_message(cls, to, message, doctype=None, docname=None, media=None, communication=None):
+	def store_whatsapp_message(
+		cls,
+		to,
+		message=None,
+		doctype=None,
+		docname=None,
+		media=None,
+		communication=None,
+		template_sid=None,
+		content_variables=None,
+		template_body=None
+	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
+
 		wa_msg = frappe.get_doc({
 			'doctype': 'WhatsApp Message',
-			'from_': 'whatsapp:{}'.format(sender),
-			'to': 'whatsapp:{}'.format(to),
-			'message': message,
+			'from_': f'whatsapp:{sender}',
+			'to': f'whatsapp:{to}',
+			'message': template_body or message,
 			'reference_doctype': doctype,
 			'reference_document_name': docname,
 			'media_link': media,
 			'communication': communication,
+			'template_sid': template_sid,
+			'content_variables': content_variables
 		}).insert(ignore_permissions=True)
 
 		return wa_msg
