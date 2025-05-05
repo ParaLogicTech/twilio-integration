@@ -33,7 +33,8 @@ class WhatsAppMessage(Document):
 			'from_': self.from_,
 			'to': self.to,
 			'status_callback': '{}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback'.format(
-				get_site_url(frappe.local.site))
+				get_site_url(frappe.local.site)
+			)
 		}
 
 		if self.template_sid:
@@ -85,7 +86,7 @@ class WhatsAppMessage(Document):
 				media=media,
 				communication=communication,
 				template_sid=template_sid,
-				content_variables=content_variables
+				content_variables=content_variables,
 			)
 			wa_msg.send()
 
@@ -156,10 +157,11 @@ def run_after_send_method(doctype=None, docname=None, notification_type=None):
 def are_whatsapp_messages_muted():
 	from frappe.utils import cint
 
-	try:
-		if getattr(frappe.flags, "mute_whatsapp", None):
-			return True
-	except RuntimeError:
-		pass
+	if not is_whatsapp_enabled():
+		return True
 
-	return cint(frappe.conf.get("mute_whatsapp") or 0) or False
+	return frappe.flags.mute_whatsapp or cint(frappe.conf.get("mute_whatsapp") or 0) or False
+
+
+def is_whatsapp_enabled():
+	return True if frappe.get_cached_value("Twilio Settings", None, 'enabled') else False

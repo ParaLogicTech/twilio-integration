@@ -24,6 +24,7 @@
    "fieldname": "template_sid",
    "fieldtype": "Data",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Template SID",
    "reqd": 1
   },
@@ -31,8 +32,7 @@
    "fieldname": "template_body",
    "fieldtype": "Code",
    "in_list_view": 1,
-   "label": "Template Body",
-   "reqd": 1
+   "label": "Template Body"
   },
   {
    "fieldname": "parameters",
@@ -43,7 +43,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-02 23:13:41.457769",
+ "modified": "2025-05-06 01:08:08.955360",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message Template",

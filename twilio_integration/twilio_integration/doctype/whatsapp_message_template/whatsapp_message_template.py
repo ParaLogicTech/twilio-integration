@@ -3,24 +3,31 @@
 
 import frappe
 from frappe.model.document import Document
+from frappe.utils import cstr
+
 
 class WhatsAppMessageTemplate(Document):
-
-	def get_parameters_dict(self, context):
+	def get_content_variables(self, context):
 		"""
 		Returns a dictionary of variable:value pairs using the parameters child table.
 		Each `value` is rendered using Jinja with the provided context.
 		"""
-		param_dict = {}
+		content_variables = frappe._dict()
 		for param in self.parameters:
-			if param.variable and param.value:
-				param_dict[param.variable] = frappe.render_template(param.value, context)
-		return param_dict
+			if param.variable:
+				value = cstr(param.value)
+				if "{" in value:
+					content_variables[param.variable] = frappe.render_template(value, context)
+				else:
+					content_variables[param.variable] = cstr(value)
 
-	def get_rendered_body(self, context):
+		return content_variables
+
+	def get_rendered_body(self, context, content_variables=None):
 		"""
 		Renders the `template_body` field using the context derived from parameters.
 		"""
-		param_dict = self.get_parameters_dict(context)
+		if content_variables is None:
+			content_variables = self.get_content_variables(context)
 
-		return frappe.render_template(self.template_body, param_dict)
+		return frappe.render_template(self.template_body, content_variables)
