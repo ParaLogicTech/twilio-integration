@@ -60,7 +60,6 @@ class WhatsAppMessage(Document):
 		communication=None,
 		template_sid=None,
 		content_variables=None,
-		template_body=None
 	):
 		from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
 
@@ -86,8 +85,7 @@ class WhatsAppMessage(Document):
 				media=media,
 				communication=communication,
 				template_sid=template_sid,
-				content_variables=content_variables,
-				template_body=template_body
+				content_variables=content_variables
 			)
 			wa_msg.send()
 
@@ -104,7 +102,6 @@ class WhatsAppMessage(Document):
 		communication=None,
 		template_sid=None,
 		content_variables=None,
-		template_body=None
 	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
 
@@ -112,7 +109,7 @@ class WhatsAppMessage(Document):
 			'doctype': 'WhatsApp Message',
 			'from_': f'whatsapp:{sender}',
 			'to': f'whatsapp:{to}',
-			'message': template_body or message,
+			'message': message,
 			'reference_doctype': doctype,
 			'reference_document_name': docname,
 			'media_link': media,

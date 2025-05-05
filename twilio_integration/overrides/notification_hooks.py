@@ -74,15 +74,14 @@ class NotificationTwilio(Notification):
 		}
 
 		if self.use_whatsapp_template and self.whatsapp_template:
-			template = frappe.get_doc("WhatsApp Message Template", self.whatsapp_message_template)
+			template = frappe.get_cached_doc("WhatsApp Message Template", self.whatsapp_message_template)
 
 			content_variables = template.get_parameters_dict(context)
 
 			message = template.get_rendered_body(context)
 
-			args["message"] = None
+			args["message"] = message
 			args["template_sid"] = template.template_sid
-			args["template_body"] = message
 			args["content_variables"] = json.dumps(content_variables)
 
 		communication = self.create_communication_for_whatsapp(doc, message=message, receiver_list=receiver_list)
