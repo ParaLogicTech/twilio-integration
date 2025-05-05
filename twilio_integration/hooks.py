@@ -22,14 +22,16 @@ doctype_js = {
 }
 
 fixtures = [
-	# {
-	# 	"dt": "Custom Field",
-	# 	"filters": {
-	# 		"name": ["in", [
-	# 			"Notification-twilio_number",
-	# 		]]
-	# 	}
-	# },
+	{
+		"dt": "Custom Field",
+		"filters": {
+			"name": ["in", [
+				"Notification-sec_whatsapp_template",
+				"Notification-whatsapp_message_template",
+				"Notification-use_whatsapp_template",
+			]]
+		}
+	},
 	{
 		"dt": "Property Setter",
 		"filters": {

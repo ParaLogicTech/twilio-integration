@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
-from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import WhatsAppMessage
+from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import WhatsAppMessage, \
+	are_whatsapp_messages_muted
 from frappe.core.doctype.notification_count.notification_count import set_notification_last_scheduled
 from frappe.email.doctype.notification.notification import (
 	Notification,
@@ -14,6 +15,7 @@ class NotificationTwilio(Notification):
 	def validate(self):
 		super().validate()
 		self.validate_twilio_settings()
+		self.validate_whatsapp_template()
 
 	def validate_twilio_settings(self):
 		if self.enabled and self.channel == "WhatsApp":
@@ -22,6 +24,13 @@ class NotificationTwilio(Notification):
 				frappe.throw(_("Twilio Settings must be enabled to send WhatsApp notifications."))
 			if not twilio_settings.whatsapp_no:
 				frappe.throw(_("Twilio WhatsApp Number is required in Twilio Settings."))
+
+	def validate_whatsapp_template(self):
+		if self.use_whatsapp_template:
+			if not self.whatsapp_message_template:
+				frappe.throw(_("Please select WhatsApp Template Message"))
+		else:
+			self.whatsapp_message_template = None
 
 	def send(self, doc, context=None):
 		if not context:
@@ -49,6 +58,9 @@ class NotificationTwilio(Notification):
 		super().send(doc, context=context)
 
 	def send_whatsapp_msg(self, doc, context):
+		if are_whatsapp_messages_muted():
+			return
+
 		receiver_list = self.get_receiver_list(doc, context)
 		receiver_list = format_numbers_for_whatsapp(receiver_list)
 		if not receiver_list:
@@ -57,13 +69,24 @@ class NotificationTwilio(Notification):
 		ref_doctype = get_reference_doctype(doc)
 		ref_name = get_reference_name(doc)
 
-		message = frappe.render_template(self.message, context)
-
-		communication = self.create_communication_for_whatsapp(doc, message=message, receiver_list=receiver_list)
-
 		notification_type = self.get_notification_type()
+
 		if notification_type:
 			set_notification_last_scheduled(ref_doctype, ref_name, notification_type, "WhatsApp")
+
+		template_sid = None
+		content_variables = None
+
+		if self.use_whatsapp_template and self.whatsapp_message_template:
+			template = frappe.get_cached_doc("WhatsApp Message Template", self.whatsapp_message_template)
+			template_sid = template.template_sid
+
+			content_variables = template.get_content_variables(context)
+			message = template.get_rendered_body(context, content_variables=content_variables)
+		else:
+			message = frappe.render_template(self.message, context)
+
+		communication = self.create_communication_for_whatsapp(doc, message=message, receiver_list=receiver_list)
 
 		WhatsAppMessage.send_whatsapp_message(
 			receiver_list=receiver_list,
@@ -72,6 +95,8 @@ class NotificationTwilio(Notification):
 			docname=ref_name,
 			notification_type=notification_type,
 			communication=communication,
+			template_sid=template_sid,
+			content_variables=json.dumps(content_variables) if content_variables else None,
 		)
 
 	def create_communication_for_whatsapp(self, doc, message=None, receiver_list=None):

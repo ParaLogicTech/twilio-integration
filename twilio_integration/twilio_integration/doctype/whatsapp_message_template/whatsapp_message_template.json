@@ -7,34 +7,47 @@
  "engine": "InnoDB",
  "field_order": [
   "template_name",
-  "module",
-  "message"
+  "template_sid",
+  "template_body",
+  "parameters"
  ],
  "fields": [
   {
    "fieldname": "template_name",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Template Name",
+   "reqd": 1,
    "unique": 1
   },
   {
-   "fieldname": "module",
-   "fieldtype": "Link",
-   "label": "Module",
-   "options": "Module Def"
+   "fieldname": "template_sid",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Template SID",
+   "reqd": 1
   },
   {
-   "fieldname": "message",
-   "fieldtype": "Text",
-   "label": "Message"
+   "fieldname": "template_body",
+   "fieldtype": "Code",
+   "in_list_view": 1,
+   "label": "Template Body"
+  },
+  {
+   "fieldname": "parameters",
+   "fieldtype": "Table",
+   "label": "Parameters",
+   "options": "WhatsApp Template Parameter"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2021-06-24 23:06:31.692896",
+ "modified": "2025-05-06 01:08:08.955360",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message Template",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -52,5 +65,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
+ "states": [],
  "track_changes": 1
 }
