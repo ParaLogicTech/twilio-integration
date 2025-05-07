@@ -4,6 +4,7 @@
 import frappe
 from frappe.model.document import Document
 from frappe.utils import cstr
+from frappe import _
 
 
 class WhatsAppMessageTemplate(Document):
@@ -31,3 +32,18 @@ class WhatsAppMessageTemplate(Document):
 			content_variables = self.get_content_variables(context)
 
 		return frappe.render_template(self.template_body, content_variables)
+
+@frappe.whitelist()
+def sync_twilio_template(template_sid, template_name):
+	from ...twilio_handler import Twilio
+
+	twilio = Twilio.connect()
+	content = twilio.get_whatsapp_template(template_sid)
+
+	if not content:
+		frappe.throw(_("Unable to fetch template from Twilio"))
+
+	doc = frappe.get_cached_doc("WhatsApp Message Template", template_name)
+	doc.db_set("template_body", content.types.get("twilio/text", {}).get("body", ""))
+
+	return _("Template synced successfully from Twilio")
