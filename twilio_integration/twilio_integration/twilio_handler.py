@@ -110,11 +110,19 @@ class Twilio:
 		twilio_settings = frappe.get_doc("Twilio Settings")
 		if not twilio_settings.enabled:
 			frappe.throw(_("Please enable twilio settings before sending WhatsApp messages"))
-		
+
 		auth_token = get_decrypted_password("Twilio Settings", "Twilio Settings", 'auth_token')
 		client = TwilioClient(twilio_settings.account_sid, auth_token)
 
 		return client
+
+	@classmethod
+	def get_whatsapp_template(self, template_sid=None):
+		client = self.get_twilio_client()
+		template = client.content.v1.contents(template_sid).fetch()
+
+		return template
+
 
 class IncomingCall:
 	def __init__(self, from_number, to_number, meta=None):
