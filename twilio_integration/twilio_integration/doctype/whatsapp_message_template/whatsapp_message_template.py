@@ -43,7 +43,6 @@ def sync_twilio_template(template_sid, template_name):
 	if not content:
 		frappe.throw(_("Unable to fetch template from Twilio"))
 
-	doc = frappe.get_cached_doc("WhatsApp Message Template", template_name)
-	doc.db_set("template_body", content.types.get("twilio/text", {}).get("body", ""))
+	body = content.types.get("twilio/text", {}).get("body", "")
 
-	return _("Template synced successfully from Twilio")
+	return {"body": body, "message": _("Template fetched successfully from Twilio")}

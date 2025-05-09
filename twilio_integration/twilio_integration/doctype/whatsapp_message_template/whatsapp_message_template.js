@@ -10,8 +10,8 @@ frappe.ui.form.on('WhatsApp Message Template', {
 					},
 					callback: function (r) {
 						if (r.message) {
-							frappe.msgprint(r.message);
-							frm.reload_doc();
+							frm.set_value('template_body', r.message.body);
+							frappe.msgprint(r.message.message);
 						}
 					}
 				});
