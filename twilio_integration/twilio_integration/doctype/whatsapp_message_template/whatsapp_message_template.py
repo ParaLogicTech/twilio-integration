@@ -5,6 +5,8 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import cstr
 from frappe import _
+from twilio.base.exceptions import TwilioRestException
+
 
 
 class WhatsAppMessageTemplate(Document):
@@ -33,16 +35,19 @@ class WhatsAppMessageTemplate(Document):
 
 		return frappe.render_template(self.template_body, content_variables)
 
+
 @frappe.whitelist()
-def sync_twilio_template(template_sid, template_name):
+def sync_twilio_template(template_sid):
 	from ...twilio_handler import Twilio
 
 	twilio = Twilio.connect()
-	content = twilio.get_whatsapp_template(template_sid)
 
-	if not content:
-		frappe.throw(_("Unable to fetch template from Twilio"))
+	try:
+		content = twilio.get_whatsapp_template(template_sid)
+		if not content:
+			frappe.throw(_("Unable to fetch template from Twilio"))
 
-	body = content.types.get("twilio/text", {}).get("body", "")
-
-	return {"body": body, "message": _("Template fetched successfully from Twilio")}
+		body = content.types.get("twilio/text", {}).get("body", "")
+		return body
+	except TwilioRestException as e:
+		frappe.throw(_("Error fetching template from Twilio: {0}").format(e))
