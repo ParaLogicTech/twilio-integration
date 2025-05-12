@@ -137,3 +137,7 @@ def whatsapp_message_status_callback(**kwargs):
 	if frappe.db.exists({'doctype': 'WhatsApp Message', 'id': args.MessageSid, 'from_': args.From, 'to': args.To}):
 		message = frappe.get_doc('WhatsApp Message', {'id': args.MessageSid, 'from_': args.From, 'to': args.To})
 		message.db_set('status', args.MessageStatus.title())
+
+		if message.communication:
+			comm = frappe.get_cached_doc("Communication", message.communication)
+			comm.set_delivery_status()
