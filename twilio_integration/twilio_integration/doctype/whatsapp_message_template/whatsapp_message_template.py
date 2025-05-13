@@ -8,7 +8,6 @@ from frappe import _
 from twilio.base.exceptions import TwilioRestException
 
 
-
 class WhatsAppMessageTemplate(Document):
 	def get_content_variables(self, context):
 		"""

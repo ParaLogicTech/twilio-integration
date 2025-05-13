@@ -10,6 +10,7 @@ from frappe import _
 from frappe.utils.password import get_decrypted_password
 from .utils import get_public_url, merge_dicts
 
+
 class Twilio:
 	"""Twilio connector over TwilioClient.
 	"""
@@ -25,12 +26,13 @@ class Twilio:
 		self.twilio_client = self.get_twilio_client()
 
 	@classmethod
-	def connect(self):
+	def connect(cls):
 		"""Make a twilio connection.
 		"""
 		settings = frappe.get_doc("Twilio Settings")
 		if not (settings and settings.enabled):
-			return
+			frappe.throw(_("Twilio is not enabled"))
+
 		return Twilio(settings=settings)
 
 	def get_phone_numbers(self):
@@ -106,7 +108,7 @@ class Twilio:
 		return resp
 
 	@classmethod
-	def get_twilio_client(self):
+	def get_twilio_client(cls):
 		twilio_settings = frappe.get_doc("Twilio Settings")
 		if not twilio_settings.enabled:
 			frappe.throw(_("Please enable twilio settings before sending WhatsApp messages"))
@@ -117,8 +119,8 @@ class Twilio:
 		return client
 
 	@classmethod
-	def get_whatsapp_template(self, template_sid=None):
-		client = self.get_twilio_client()
+	def get_whatsapp_template(cls, template_sid=None):
+		client = cls.get_twilio_client()
 		template = client.content.v1.contents(template_sid).fetch()
 
 		return template
