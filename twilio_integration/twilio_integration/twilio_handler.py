@@ -1,5 +1,3 @@
-import re
-import json
 from twilio.rest import Client as TwilioClient
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
@@ -119,7 +117,7 @@ class Twilio:
 		return client
 
 	@classmethod
-	def get_whatsapp_template(cls, template_sid=None):
+	def get_whatsapp_template(cls, template_sid):
 		client = cls.get_twilio_client()
 		template = client.content.v1.contents(template_sid).fetch()
 
@@ -150,6 +148,7 @@ class IncomingCall:
 			return twilio.generate_twilio_dial_response(self.from_number, attender['mobile_no'])
 		else:
 			return twilio.generate_twilio_client_response(twilio.safe_identity(attender['name']))
+
 
 class TwilioCallDetails:
 	def __init__(self, call_info, call_from = None, call_to = None):
@@ -225,6 +224,7 @@ def get_active_loggedin_users(users):
 		WHERE `user` IN %(users)s
 		""", {'users': users})
 	return [row[0] for row in set(rows)]
+
 
 def get_the_call_attender(owners):
 	"""Get attender details from list of owners

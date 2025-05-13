@@ -41,12 +41,28 @@ def sync_twilio_template(template_sid):
 
 	twilio = Twilio.connect()
 
+	out = frappe._dict({
+		"body": "",
+		"variables": {},
+	})
+
 	try:
 		content = twilio.get_whatsapp_template(template_sid)
 		if not content:
 			frappe.throw(_("Unable to fetch template from Twilio"))
 
-		body = content.types.get("twilio/text", {}).get("body", "")
-		return body
+		if content.types.get("twilio/text"):
+			out.body = content.types.get("twilio/text", {}).get("body", "")
+		else:
+			for type, obj in content.types.items():
+				out.body = obj.get("body", "")
+				if out.body:
+					break
+
+		if content.variables:
+			out.variables = content.variables
+
 	except TwilioRestException as e:
 		frappe.throw(_("Error fetching template from Twilio: {0}").format(e))
+
+	return out
