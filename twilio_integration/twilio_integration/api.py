@@ -139,5 +139,5 @@ def whatsapp_message_status_callback(**kwargs):
 		message.db_set('status', args.MessageStatus.title())
 
 		if message.communication:
-			comm = frappe.get_cached_doc("Communication", message.communication)
+			comm = frappe.get_doc("Communication", message.communication)
 			comm.set_delivery_status()
