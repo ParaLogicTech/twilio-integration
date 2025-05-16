@@ -105,7 +105,7 @@ class NotificationTwilio(Notification):
 		communication = frappe.get_doc({
 			"doctype": "Communication",
 			"communication_type": "Automated Message",
-			"communication_medium": "Other",
+			"communication_medium": "WhatsApp",
 			"subject": f"WhatsApp",
 			"content": message,
 			"sent_or_received": "Sent",
