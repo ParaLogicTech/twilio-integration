@@ -4,9 +4,6 @@ from frappe.core.doctype.communication.communication import Communication
 
 
 class CommunicationTwilio(Communication):
-	def validate(self):
-		super().validate()
-
 	def set_delivery_status(self, commit=False):
 		"""Look into the status of WhatsApp Queue linked to this Communication and set the Delivery Status of this Communication"""
 		delivery_status = None
@@ -18,11 +15,14 @@ class CommunicationTwilio(Communication):
 		status_counts = Counter(
 			frappe.db.sql_list('''select status from `tabWhatsApp Message` where communication=%s''', self.name))
 
+		if self.sent_or_received == "Received":
+			return
+
 		if status_counts.get("Queued"):
 			delivery_status = "Sending"
 		elif status_counts.get("Undelivered") or status_counts.get("Error"):
 			delivery_status = "Error"
-		elif status_counts.get("Sent") or status_counts.get("Received") or status_counts.get("Delivered") or status_counts.get("Read"):
+		elif status_counts.get("Sent") or status_counts.get("Delivered") or status_counts.get("Read"):
 			delivery_status = "Sent"
 
 		if delivery_status:
