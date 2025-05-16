@@ -18,7 +18,7 @@ class CommunicationTwilio(Communication):
 		if self.sent_or_received == "Received":
 			return
 
-		if status_counts.get("Queued"):
+		if status_counts.get("Queued") or status_counts.get("Not Sent") or status_counts.get("Sending"):
 			delivery_status = "Sending"
 		elif status_counts.get("Undelivered") or status_counts.get("Error"):
 			delivery_status = "Error"
