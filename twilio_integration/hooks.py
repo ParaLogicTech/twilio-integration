@@ -13,7 +13,8 @@ app_license = "MIT"
 boot_session = "twilio_integration.boot.boot_session"
 
 override_doctype_class = {
-	"Notification": "twilio_integration.overrides.notification_hooks.NotificationTwilio"
+	"Notification": "twilio_integration.overrides.notification_hooks.NotificationTwilio",
+	"Communication": "twilio_integration.overrides.communication_hooks.CommunicationTwilio",
 }
 
 doctype_js = {
