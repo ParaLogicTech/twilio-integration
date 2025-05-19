@@ -44,8 +44,12 @@ class TwilioSettings(Document):
 	def set_api_credentials(self, twilio):
 		"""Generate Twilio API credentials if not exist and update them.
 		"""
-		if self.api_key and self.api_secret:
-			return
+		try:
+			if self.api_key and self.get_password("api_secret", raise_exception=False):
+				return
+		except frappe.ValidationError:
+			pass
+
 		new_key = self.create_api_key(twilio)
 		self.api_key = new_key.sid
 		self.api_secret = new_key.secret
