@@ -48,7 +48,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "\nQueued\nSent\nReceived\nDelivered\nRead\nUndelivered\nError",
+   "options": "\nQueued\nSent\nReceived\nDelivered\nRead\nUndelivered\nFailed",
    "read_only": 1
   },
   {
@@ -134,7 +134,7 @@
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-06 01:40:43.849646",
+ "modified": "2025-05-19 22:58:40.735169",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
