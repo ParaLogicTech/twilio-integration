@@ -1,16 +1,24 @@
 # Copyright (c) 2021, Frappe and contributors
 # For license information, please see license.txt
+from asyncio import Timeout
+
+from rq.timeouts import JobTimeoutException
+from six import text_type
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
-from frappe.utils import get_site_url
+from frappe.utils import get_site_url, now_datetime
 from ...twilio_handler import Twilio
 import json
 
 
 class WhatsAppMessage(Document):
+	def on_trash(self):
+		if frappe.session.user != 'Administrator':
+			frappe.throw(_('Only Administrator can delete WhatsApp Message'))
+
 	def send(self):
 		client = Twilio.get_twilio_client()
 		message_dict = self.get_message_dict()
@@ -25,8 +33,8 @@ class WhatsAppMessage(Document):
 			self.save(ignore_permissions=True)
 
 		except Exception as e:
-			self.db_set('status', "Error")
-			self.log_error(title=_('Twilio WhatsApp Message Error'), message=e)
+			self.db_set('status', "Failed")
+			self.log_error(title=_('Twilio WhatsApp Message Failed'), message=e)
 
 	def get_message_dict(self):
 		args = {
@@ -61,6 +69,7 @@ class WhatsAppMessage(Document):
 		communication=None,
 		template_sid=None,
 		content_variables=None,
+		queue=None,
 	):
 		from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
 
@@ -87,10 +96,13 @@ class WhatsAppMessage(Document):
 				communication=communication,
 				template_sid=template_sid,
 				content_variables=content_variables,
+				queue=queue,
 			)
-			wa_msg.send()
-
-		run_after_send_method(doctype=doctype, docname=docname, notification_type=notification_type)
+			if queue:
+				frappe.enqueue("twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.send_one",
+							   message_name=wa_msg.name, enqueue_after_commit=True)
+			else:
+				send_one(wa_msg.name, auto_commit=False, queue=queue)
 
 	@classmethod
 	def store_whatsapp_message(
@@ -103,8 +115,10 @@ class WhatsAppMessage(Document):
 		communication=None,
 		template_sid=None,
 		content_variables=None,
+		queue=False,
 	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
+		status = 'Queued' if queue else 'Not Sent'
 
 		wa_msg = frappe.get_doc({
 			'doctype': 'WhatsApp Message',
@@ -115,6 +129,8 @@ class WhatsAppMessage(Document):
 			'reference_document_name': docname,
 			'media_link': media,
 			'communication': communication,
+			'status': status,
+			'retry': 0,
 			'template_sid': template_sid,
 			'content_variables': content_variables
 		}).insert(ignore_permissions=True)
@@ -165,3 +181,131 @@ def are_whatsapp_messages_muted():
 
 def is_whatsapp_enabled():
 	return True if frappe.get_cached_value("Twilio Settings", None, 'enabled') else False
+
+def flush_wa_queue(queue=False):
+	"""Flush queued WhatsApp Messages, called from scheduler"""
+	auto_commit = not queue
+
+	if are_whatsapp_messages_muted():
+		frappe.msgprint(_("WhatsApp messages are muted"))
+		return
+
+	for message in get_queued_messages():
+		send_one(message.name, auto_commit, queue=queue)
+
+def send_one(message_name, auto_commit=True, queue=False):
+	if are_whatsapp_messages_muted():
+		frappe.msgprint(_("WhatsApp messages are muted"))
+		return
+
+	wa_message = frappe.db.sql('''
+		select *
+		from `tabWhatsApp Message`
+		where name = %s
+		for update
+	''', message_name, as_dict=True)[0]
+
+	if wa_message.status not in ('Not Sent', 'Queued'):
+		if auto_commit:
+			frappe.db.rollback()
+		return
+
+	frappe.db.sql("""
+		update `tabWhatsApp Message` set status='Sending', modified=%s where name=%s
+	""", (now_datetime(), wa_message.name), auto_commit=auto_commit)
+
+	if wa_message.communication:
+		frappe.get_doc('Communication', wa_message.communication).set_delivery_status(commit=auto_commit)
+
+	try:
+		wa_msg = frappe.get_doc('WhatsApp Message', wa_message.name)
+		wa_msg.send()
+
+		if wa_message.communication:
+			frappe.get_doc('Communication', wa_message.communication).set_delivery_status(commit=auto_commit)
+
+		run_after_send_method(wa_message.reference_doctype, wa_message.reference_document_name, wa_message.notification_type)
+
+	except (ConnectionError, Timeout, JobTimeoutException):
+		handle_timeout(wa_message, auto_commit)
+
+	except Exception as e:
+		handle_error(e, wa_message, auto_commit, queue)
+
+def get_queued_messages():
+	return frappe.db.sql('''
+		select name, from_
+		from `tabWhatsApp Message`
+		where status IN ('Queued', 'Not Sent')
+		order by priority desc, creation asc
+		limit 500
+	''', as_dict=True)
+
+def clear_wa_message_queue():
+	"""Remove WhatsApp messages older than 31 days with final status,
+	and expire WhatsApp messages not sent for 7 days.
+	Called daily via scheduler.
+	"""
+	final_statuses = ("Sent", "Delivered", "Read", "Failed", "Undelivered", "Not Sent")
+
+	old_whatsapp_messages = frappe.db.sql_list("""
+		SELECT name
+		FROM `tabWhatsApp Message`
+		WHERE status IN %s
+		AND modified < (NOW() - INTERVAL '31' DAY)
+	""", [final_statuses])
+
+	if old_whatsapp_messages:
+		frappe.db.sql("""
+			DELETE FROM `tabWhatsApp Message`
+			WHERE name IN %s
+		""", [old_whatsapp_messages])
+
+	frappe.db.sql("""
+		UPDATE `tabWhatsApp Message`
+		SET status='Undelivered'
+		WHERE modified < (NOW() - INTERVAL '7' DAY')
+		AND status='Not Sent'
+	""")
+
+def handle_timeout(wa_message, auto_commit):
+	frappe.db.sql("""update `tabWhatsApp Message`
+					 set status='Not Sent',
+						 modified=%s
+					 where name = %s""",
+				  (now_datetime(), wa_message.name), auto_commit=auto_commit)
+
+	if wa_message.communication:
+		frappe.get_doc('Communication', wa_message.communication).set_delivery_status(
+			commit=auto_commit)
+
+def handle_error(e, message, auto_commit, queue):
+	if auto_commit:
+		frappe.db.rollback()
+
+	if message.status == 'Queued' or message.retry < 3:
+		frappe.db.sql("""
+					  update `tabWhatsApp Message`
+					  set status='Not Sent',
+						  retry=retry+1,
+						  error=%s,
+						  modified=%s
+					  where name = %s
+					  """, (text_type(e), now_datetime(), message.name), auto_commit=auto_commit)
+	else:
+		frappe.db.sql("""
+					  update `tabWhatsApp Message`
+					  set status='Failed',
+						  error=%s,
+						  modified=%s
+					  where name = %s
+					  """, (text_type(e), now_datetime(), message.name), auto_commit=auto_commit)
+
+	if message.communication:
+		frappe.get_doc('Communication', message.communication).set_delivery_status(commit=auto_commit)
+
+	if queue:
+		print(frappe.get_traceback())
+		raise e
+	else:
+		frappe.log_error(reference_doctype="WhatsApp Message", reference_name=message.name)

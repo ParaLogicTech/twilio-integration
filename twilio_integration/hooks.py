@@ -43,3 +43,13 @@ fixtures = [
 		}
 	}
 ]
+
+scheduler_events = {
+	"all": [
+		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.flush_wa_queue",
+	],
+	"daily": [
+		"frappe.core.doctype.sms_queue.sms_queue.clear_queue",
+		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.clear_wa_message_queue",
+	],
+}
