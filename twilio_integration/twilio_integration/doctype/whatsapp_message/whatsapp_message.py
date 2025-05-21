@@ -97,12 +97,13 @@ class WhatsAppMessage(Document):
 				template_sid=template_sid,
 				content_variables=content_variables,
 				queue=queue,
+				notification_type=notification_type,
 			)
 			if queue:
-				frappe.enqueue("twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.send_one",
+				frappe.enqueue("twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.send_one_wa_message",
 							   message_name=wa_msg.name, enqueue_after_commit=True)
 			else:
-				send_one(wa_msg.name, auto_commit=False, queue=queue)
+				send_one_wa_message(wa_msg.name, auto_commit=False, queue=queue)
 
 	@classmethod
 	def store_whatsapp_message(
@@ -116,6 +117,7 @@ class WhatsAppMessage(Document):
 		template_sid=None,
 		content_variables=None,
 		queue=False,
+		notification_type=None,
 	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
 		status = 'Queued' if queue else 'Not Sent'
@@ -131,6 +133,7 @@ class WhatsAppMessage(Document):
 			'communication': communication,
 			'status': status,
 			'retry': 0,
+			'notification_type': notification_type,
 			'template_sid': template_sid,
 			'content_variables': content_variables
 		}).insert(ignore_permissions=True)
@@ -191,9 +194,9 @@ def flush_wa_queue(queue=False):
 		return
 
 	for message in get_queued_messages():
-		send_one(message.name, auto_commit, queue=queue)
+		send_one_wa_message(message.name, auto_commit, queue=queue)
 
-def send_one(message_name, auto_commit=True, queue=False):
+def send_one_wa_message(message_name, auto_commit=True, queue=False):
 	if are_whatsapp_messages_muted():
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
