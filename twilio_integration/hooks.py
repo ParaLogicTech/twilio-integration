@@ -46,9 +46,9 @@ fixtures = [
 
 scheduler_events = {
 	"all": [
-		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.flush_wa_queue",
+		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.flush_whatsapp_message_queue",
 	],
 	"daily": [
-		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.clear_wa_message_queue",
+		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.clear_whatsapp_message_queue",
 	],
 }

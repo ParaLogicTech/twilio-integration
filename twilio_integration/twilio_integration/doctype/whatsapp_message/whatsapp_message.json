@@ -13,6 +13,7 @@
   "message",
   "media_link",
   "status",
+  "error",
   "send_on",
   "retry",
   "reference_doctype",
@@ -49,7 +50,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "\nQueued\nSent\nReceived\nDelivered\nRead\nUndelivered\nFailed\nNot Sent\nSending",
+   "options": "\nNot Sent\nSending\nQueued\nSent\nReceived\nDelivered\nRead\nUndelivered\nFailed\nExpired\nError",
    "read_only": 1
   },
   {
@@ -135,13 +136,18 @@
    "fieldtype": "Int",
    "label": "Retry",
    "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-19 22:58:40.735169",
+ "modified": "2025-05-21 16:40:53.259254",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
