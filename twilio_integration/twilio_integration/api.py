@@ -4,13 +4,18 @@ import frappe
 from frappe import _
 from frappe.contacts.doctype.contact.contact import get_contact_with_phone_number
 from .twilio_handler import Twilio, IncomingCall, TwilioCallDetails
-from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import incoming_message_callback
+from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import (
+	incoming_message_callback,
+	outgoing_message_status_callback
+)
 from twilio.twiml.messaging_response import MessagingResponse
+
 
 @frappe.whitelist()
 def get_twilio_phone_numbers():
 	twilio = Twilio.connect()
 	return (twilio and twilio.get_phone_numbers()) or []
+
 
 @frappe.whitelist()
 def generate_access_token():
@@ -32,6 +37,7 @@ def generate_access_token():
 	return {
 		'token': frappe.safe_decode(token)
 	}
+
 
 @frappe.whitelist(allow_guest=True)
 def voice(**kwargs):
@@ -58,6 +64,7 @@ def voice(**kwargs):
 	create_call_log(call_details)
 	return Response(resp.to_xml(), mimetype='text/xml')
 
+
 @frappe.whitelist(allow_guest=True)
 def twilio_incoming_call_handler(**kwargs):
 	args = frappe._dict(kwargs)
@@ -66,6 +73,7 @@ def twilio_incoming_call_handler(**kwargs):
 
 	resp = IncomingCall(args.From, args.To).process()
 	return Response(resp.to_xml(), mimetype='text/xml')
+
 
 @frappe.whitelist()
 def create_call_log(call_details: TwilioCallDetails):
@@ -77,6 +85,7 @@ def create_call_log(call_details: TwilioCallDetails):
 	call_log.flags.ignore_permissions = True
 	call_log.save()
 	frappe.db.commit()
+
 
 @frappe.whitelist()
 def update_call_log(call_sid, status=None):
@@ -93,6 +102,7 @@ def update_call_log(call_sid, status=None):
 	call_log.save()
 	frappe.db.commit()
 
+
 @frappe.whitelist(allow_guest=True)
 def update_recording_info(**kwargs):
 	try:
@@ -103,6 +113,7 @@ def update_recording_info(**kwargs):
 		frappe.db.set_value("Call Log", call_sid, "recording_url", recording_url)
 	except:
 		frappe.log_error(title=_("Failed to capture Twilio recording"))
+
 
 @frappe.whitelist()
 def get_contact_details(phone):
@@ -117,6 +128,7 @@ def get_contact_details(phone):
 		'phone_number': contact_doc.phone
 	}
 
+
 @frappe.whitelist(allow_guest=True)
 def incoming_whatsapp_message_handler(**kwargs):
 	"""This is a webhook called by Twilio when a WhatsApp message is received.
@@ -129,18 +141,10 @@ def incoming_whatsapp_message_handler(**kwargs):
 	resp.message(frappe.db.get_single_value('Twilio Settings', 'reply_message'))
 	return Response(resp.to_xml(), mimetype='text/xml')
 
+
 @frappe.whitelist(allow_guest=True)
 def whatsapp_message_status_callback(**kwargs):
 	"""This is a webhook called by Twilio whenever sent WhatsApp message status is changed.
 	"""
 	args = frappe._dict(kwargs)
-	message_name = frappe.db.get_value("WhatsApp Message", {'id': args.MessageSid, 'from_': args.From, 'to': args.To})
-	if message_name:
-		message = frappe.get_doc('WhatsApp Message', message_name)
-		message.db_set('status', args.MessageStatus.title())
-
-		if message.communication:
-			comm = frappe.get_doc("Communication", message.communication)
-			comm.set_delivery_status()
-
-		frappe.db.commit()
+	outgoing_message_status_callback(args, auto_commit=True)

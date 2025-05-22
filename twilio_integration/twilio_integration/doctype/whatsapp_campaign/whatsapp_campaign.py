@@ -6,7 +6,7 @@ from frappe.model.document import Document
 from frappe.utils import get_site_url
 from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import WhatsAppMessage
 
-supported_file_ext = ['jpg', 
+supported_file_ext = ['jpg',
 	'jpeg',
 	'png',
 	'mp3',
@@ -28,7 +28,7 @@ class WhatsAppCampaign(Document):
 			self.status = 'Scheduled'
 
 		self.all_missing_recipients()
-	
+
 	def validate_attachment(self):
 		attachment = self.get_attachment()
 		if attachment:
@@ -52,20 +52,20 @@ class WhatsAppCampaign(Document):
 		contacts = [recipient.whatsapp_no for recipient in self.recipients if recipient.whatsapp_no]
 
 		return contacts
-	
+
 	def all_missing_recipients(self):
 		for recipient in self.recipients:
 			if not recipient.whatsapp_no:
 				recipient.whatsapp_no = frappe.db.get_value(recipient.campaign_for, recipient.recipient, 'whatsapp_no')
-		
+
 		self.total_participants = len(self.recipients)
 
 	@frappe.whitelist()
 	def get_doctype_list(self):
-		standard_doctype = frappe.db.sql_list("""SELECT dt.parent FROM `tabDocField` 
+		standard_doctype = frappe.db.sql_list("""SELECT dt.parent FROM `tabDocField`
 			df INNER JOIN `tabDoctype` dt ON dt.name = dt.parent
 			WHERE df.fieldname='whatsapp_no' AND dt.istable = 0 AND dt.issingle = 0 AND dt.is_tree = 0""")
-		
+
 		custom_doctype = frappe.db.sql_list("""SELECT dt FROM `tabCustom Field`
 			cf INNER JOIN `tabDoctype` dt ON dt.name = cf.dt
 			WHERE cf.fieldname='whatsapp_no' AND dt.istable = 0 AND dt.issingle = 0 AND dt.is_tree = 0""")
@@ -83,8 +83,8 @@ class WhatsAppCampaign(Document):
 		WhatsAppMessage.send_whatsapp_message(
 			receiver_list = self.get_whatsapp_contact(),
 			message = self.message,
-			doctype = self.doctype,
-			docname = self.name,
+			reference_doctype= self.doctype,
+			reference_name= self.name,
 			media = media
 		)
 

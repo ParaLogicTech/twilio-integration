@@ -6,30 +6,41 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "id",
-  "sent_received",
+  "notification_type",
+  "profile_name",
   "from_",
   "to",
-  "message",
-  "media_link",
+  "column_break_eife",
+  "sent_received",
+  "id",
+  "date_sent",
+  "column_break_qkoi",
   "status",
-  "reference_doctype",
-  "reference_document_name",
-  "profile_name",
-  "communication",
-  "notification_type",
+  "retry",
+  "priority",
+  "section_break_jhlu",
+  "message",
+  "column_break_o6kp",
   "template_sid",
   "content_variables",
   "error",
-  "send_on",
-  "retry",
-  "priority"
+  "section_break_8gd5",
+  "reference_doctype",
+  "reference_name",
+  "child_doctype",
+  "child_name",
+  "column_break_94ts",
+  "party_doctype",
+  "party",
+  "column_break_nkwx",
+  "communication",
+  "media_link"
  ],
  "fields": [
   {
    "fieldname": "id",
    "fieldtype": "Data",
-   "label": "ID",
+   "label": "Message SID",
    "no_copy": 1,
    "read_only": 1,
    "search_index": 1
@@ -38,12 +49,13 @@
    "fieldname": "to",
    "fieldtype": "Data",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "To",
    "read_only": 1
   },
   {
    "fieldname": "message",
-   "fieldtype": "Long Text",
+   "fieldtype": "Text",
    "label": "Message",
    "read_only": 1
   },
@@ -52,6 +64,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
    "options": "Not Sent\nSending\nQueued\nSent\nReceived\nDelivered\nRead\nUndelivered\nFailed\nExpired\nError",
@@ -64,14 +77,6 @@
    "in_standard_filter": 1,
    "label": "Reference DocType",
    "options": "DocType",
-   "read_only": 1
-  },
-  {
-   "fieldname": "reference_document_name",
-   "fieldtype": "Dynamic Link",
-   "in_standard_filter": 1,
-   "label": "Reference Document Name",
-   "options": "reference_doctype",
    "read_only": 1
   },
   {
@@ -88,12 +93,6 @@
    "fieldname": "from_",
    "fieldtype": "Data",
    "label": "From",
-   "read_only": 1
-  },
-  {
-   "fieldname": "send_on",
-   "fieldtype": "Datetime",
-   "label": "Send On",
    "read_only": 1
   },
   {
@@ -160,13 +159,82 @@
    "fieldtype": "Int",
    "label": "Priority",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_eife",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_qkoi",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_8gd5",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_nkwx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_jhlu",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_o6kp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "child_doctype",
+   "fieldtype": "Link",
+   "label": "Child DocType",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "child_name",
+   "fieldtype": "Data",
+   "label": "Child Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_94ts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "party_doctype",
+   "fieldtype": "Link",
+   "label": "Party DocType",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Dynamic Link",
+   "label": "Party Name",
+   "options": "party_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_sent",
+   "fieldtype": "Datetime",
+   "label": "Date Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Reference Name",
+   "options": "reference_doctype",
+   "read_only": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-22 11:47:40.518777",
+ "modified": "2025-05-22 23:30:22.588207",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
@@ -188,6 +256,6 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "reference_document_name",
+ "title_field": "reference_name",
  "track_changes": 1
 }

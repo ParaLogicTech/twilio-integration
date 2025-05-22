@@ -5,7 +5,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
-from frappe.utils import get_site_url
+from frappe.utils import get_site_url, convert_utc_to_system_timezone
 from ...twilio_handler import Twilio
 from rq.timeouts import JobTimeoutException
 from requests.exceptions import ConnectionError, Timeout
@@ -43,13 +43,18 @@ class WhatsAppMessage(Document):
 		cls,
 		receiver_list,
 		message=None,
-		doctype=None,
-		docname=None,
 		notification_type=None,
+		reference_doctype=None,
+		reference_name=None,
+		child_doctype=None,
+		child_name=None,
+		party_doctype=None,
+		party=None,
 		media=None,
-		communication=None,
 		template_sid=None,
 		content_variables=None,
+		automated=False,
+		delayed=False,
 		now=False,
 	):
 		from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
@@ -63,37 +68,94 @@ class WhatsAppMessage(Document):
 			if not isinstance(receiver_list, list):
 				receiver_list = [receiver_list]
 
-		doc = get_doc_for_notification_triggers(doctype, docname)
+		communication = cls.create_communication(
+			receiver_list=receiver_list,
+			message=message,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+			party_doctype=party_doctype,
+			party=party,
+			automated=automated,
+		)
+
+		doc = get_doc_for_notification_triggers(reference_doctype, reference_name)
 		run_before_send_method(doc=doc, notification_type=notification_type)
 
 		for rec in receiver_list:
 			wa_msg = cls.store_whatsapp_message(
 				to=rec,
 				message=message,
-				doctype=doctype,
-				docname=docname,
+				reference_doctype=reference_doctype,
+				reference_docname=reference_name,
+				child_doctype=child_doctype,
+				child_name=child_name,
+				party_doctype=party_doctype,
+				party=party,
 				media=media,
 				communication=communication,
 				template_sid=template_sid,
 				content_variables=content_variables,
 				notification_type=notification_type,
 			)
-			if now:
-				send_whatsapp_message(wa_msg.name, now=now)
-			else:
-				frappe.enqueue(
-					"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.send_whatsapp_message",
-					message_name=wa_msg.name,
-					enqueue_after_commit=True
-				)
+
+			if not delayed:
+				if now:
+					send_whatsapp_message(wa_msg.name, auto_commit=not now, now=now)
+				else:
+					frappe.enqueue(
+						"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.send_whatsapp_message",
+						message_name=wa_msg.name,
+						enqueue_after_commit=True
+					)
+
+	@classmethod
+	def create_communication(
+		cls,
+		receiver_list,
+		message,
+		reference_doctype,
+		reference_name,
+		party_doctype=None,
+		party=None,
+		automated=False,
+	):
+		if not reference_doctype or not reference_name:
+			return
+
+		communication = frappe.get_doc({
+			"doctype": "Communication",
+			"communication_type": "Automated Message" if automated else "Communication",
+			"communication_medium": "WhatsApp",
+			"subject": "WhatsApp",
+			"content": message,
+			"sent_or_received": "Sent",
+			"reference_doctype": reference_doctype,
+			"reference_name": reference_name,
+			"sender": frappe.session.user,
+			"recipients": "\n".join(receiver_list),
+			"phone_no": receiver_list[0] if len(receiver_list) == 1 else None
+		})
+
+		if party_doctype and party:
+			communication.append("timeline_links", {
+				"link_doctype": party_doctype,
+				"link_name": party
+			})
+
+		communication.insert(ignore_permissions=True)
+		return communication.get("name")
 
 	@classmethod
 	def store_whatsapp_message(
 		cls,
 		to,
 		message=None,
-		doctype=None,
-		docname=None,
+		reference_doctype=None,
+		reference_docname=None,
+		child_doctype=None,
+		child_name=None,
+		party_doctype=None,
+		party=None,
 		media=None,
 		communication=None,
 		template_sid=None,
@@ -108,8 +170,12 @@ class WhatsAppMessage(Document):
 			'from_': f'whatsapp:{sender}',
 			'to': f'whatsapp:{to}',
 			'message': message,
-			'reference_doctype': doctype,
-			'reference_document_name': docname,
+			'reference_doctype': reference_doctype,
+			'reference_name': reference_docname,
+			'child_doctype': child_doctype,
+			'child_name': child_name,
+			'party_doctype': party_doctype,
+			'party': party,
 			'media_link': media,
 			'communication': communication,
 			'notification_type': notification_type,
@@ -132,9 +198,28 @@ def incoming_message_callback(args):
 		'profile_name': args.ProfileName,
 		'sent_received': args.SmsStatus.title(),
 		'id': args.MessageSid,
-		'send_on': frappe.utils.now(),
+		'date_sent': frappe.utils.now(),
 		'status': 'Received'
 	}).insert(ignore_permissions=True)
+
+
+def outgoing_message_status_callback(args, auto_commit=False):
+	message = frappe.db.get_value("WhatsApp Message", filters={
+		'id': args.MessageSid,
+		'from_': args.From,
+		'to': args.To
+	}, fieldname=["name", "communication"], as_dict=1)
+
+	if message:
+		frappe.db.set_value("WhatsApp Message", message.name, {
+			"status": args.MessageStatus.title(),
+		})
+		if auto_commit:
+			frappe.db.commit()
+
+		if message.communication:
+			comm = frappe.get_doc("Communication", message.communication)
+			comm.set_delivery_status(commit=auto_commit)
 
 
 def run_before_send_method(doc=None, notification_type=None):
@@ -148,11 +233,11 @@ def run_before_send_method(doc=None, notification_type=None):
 			frappe.throw(_("{0} Notification Validation Failed").format(notification_type))
 
 
-def run_after_send_method(doctype=None, docname=None, notification_type=None):
+def run_after_send_method(reference_doctype=None, reference_name=None, notification_type=None):
 	from frappe.core.doctype.notification_count.notification_count import add_notification_count
 
-	if doctype and docname and notification_type:
-		add_notification_count(doctype, docname, notification_type, 'WhatsApp')
+	if reference_doctype and reference_name and notification_type:
+		add_notification_count(reference_doctype, reference_name, notification_type, 'WhatsApp')
 
 
 def are_whatsapp_messages_muted():
@@ -199,25 +284,29 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
 
 	try:
-		doc = get_doc_for_notification_triggers(message_doc.reference_doctype, message_doc.reference_document_name)
+		doc = get_doc_for_notification_triggers(message_doc.reference_doctype, message_doc.reference_name)
 		run_before_send_method(doc, notification_type=message_doc.notification_type)
 
 		client = Twilio.get_twilio_client()
 		message_dict = message_doc.get_message_dict()
 		response = client.messages.create(**message_dict)
 
+		date_sent = response.date_sent
+		if date_sent:
+			date_sent = convert_utc_to_system_timezone(date_sent).replace(tzinfo=None)
+
 		message_doc.db_set({
 			"id": response.sid,
 			"status": response.status.title(),
-			"send_on": response.date_sent,
+			"date_sent": date_sent,
 		}, commit=auto_commit)
 
 		if message_doc.communication:
 			frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
 
 		run_after_send_method(
-			doctype=message_doc.reference_doctype,
-			docname=message_doc.reference_document_name,
+			reference_doctype=message_doc.reference_doctype,
+			reference_name=message_doc.reference_name,
 			notification_type=message_doc.notification_type
 		)
 
