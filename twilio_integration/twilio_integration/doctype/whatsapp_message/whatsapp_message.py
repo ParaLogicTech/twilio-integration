@@ -243,7 +243,7 @@ def get_queued_whatsapp_messages():
 		select name
 		from `tabWhatsApp Message`
 		where status='Not Sent'
-		order by creation asc
+		order by creation
 		limit 500
 	''', as_dict=True)
 
@@ -252,9 +252,10 @@ def clear_whatsapp_message_queue():
 	"""Expire WhatsApp messages not sent for 7 days. Called daily via scheduler."""
 	frappe.db.sql("""
 		UPDATE `tabWhatsApp Message`
-		SET status='Expired'
-		WHERE modified < (NOW() - INTERVAL '7' DAY')
-		AND status='Not Sent'""")
+		SET `status`='Expired'
+		WHERE `modified` < (NOW() - INTERVAL '7' DAY)
+		AND `status`='Not Sent'
+	""")
 
 
 def handle_timeout(wa_message, auto_commit):
