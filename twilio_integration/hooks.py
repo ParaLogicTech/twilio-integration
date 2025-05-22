@@ -49,6 +49,6 @@ scheduler_events = {
 		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.flush_whatsapp_message_queue",
 	],
 	"daily": [
-		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.clear_whatsapp_message_queue",
+		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.expire_whatsapp_message_queue",
 	],
 }

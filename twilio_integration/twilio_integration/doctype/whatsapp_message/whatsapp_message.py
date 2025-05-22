@@ -1,14 +1,14 @@
 # Copyright (c) 2021, Frappe and contributors
 # For license information, please see license.txt
-from rq.timeouts import JobTimeoutException
-from requests.exceptions import ConnectionError, Timeout
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
-from frappe.utils import get_site_url, now_datetime
+from frappe.utils import get_site_url
 from ...twilio_handler import Twilio
+from rq.timeouts import JobTimeoutException
+from requests.exceptions import ConnectionError, Timeout
 import json
 
 
@@ -17,8 +17,29 @@ class WhatsAppMessage(Document):
 		if frappe.session.user != 'Administrator':
 			frappe.throw(_('Only Administrator can delete WhatsApp Message'))
 
+	def get_message_dict(self):
+		args = {
+			'from_': self.from_,
+			'to': self.to,
+			'status_callback': '{0}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback'.format(
+				get_site_url(frappe.local.site)
+			)
+		}
+
+		if self.template_sid:
+			args['content_sid'] = self.template_sid
+			if self.content_variables:
+				args['content_variables'] = self.content_variables
+		else:
+			args['body'] = self.message
+
+		if self.media_link:
+			args['media_url'] = [self.media_link]
+
+		return args
+
 	@classmethod
-	def queue_whatsapp_message(
+	def send_whatsapp_message(
 		cls,
 		receiver_list,
 		message=None,
@@ -43,7 +64,6 @@ class WhatsAppMessage(Document):
 				receiver_list = [receiver_list]
 
 		doc = get_doc_for_notification_triggers(doctype, docname)
-
 		run_before_send_method(doc=doc, notification_type=notification_type)
 
 		for rec in receiver_list:
@@ -58,12 +78,14 @@ class WhatsAppMessage(Document):
 				content_variables=content_variables,
 				notification_type=notification_type,
 			)
-			if not now:
+			if now:
+				send_whatsapp_message(wa_msg.name, now=now)
+			else:
 				frappe.enqueue(
 					"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.send_whatsapp_message",
-					message_name=wa_msg.name, enqueue_after_commit=True)
-			else:
-				send_whatsapp_message(wa_msg.name, now=now)
+					message_name=wa_msg.name,
+					enqueue_after_commit=True
+				)
 
 	@classmethod
 	def store_whatsapp_message(
@@ -80,8 +102,9 @@ class WhatsAppMessage(Document):
 	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
 
-		wa_msg = frappe.get_doc({
-			'doctype': 'WhatsApp Message',
+		wa_msg = frappe.new_doc("WhatsApp Message")
+		wa_msg.update({
+			'sent_received': 'Sent',
 			'from_': f'whatsapp:{sender}',
 			'to': f'whatsapp:{to}',
 			'message': message,
@@ -89,12 +112,13 @@ class WhatsAppMessage(Document):
 			'reference_document_name': docname,
 			'media_link': media,
 			'communication': communication,
-			'status': 'Not Sent',
-			'retry': 0,
 			'notification_type': notification_type,
 			'template_sid': template_sid,
-			'content_variables': content_variables
-		}).insert(ignore_permissions=True)
+			'content_variables': content_variables,
+			'status': 'Not Sent',
+			'retry': 0,
+		})
+		wa_msg.insert(ignore_permissions=True)
 
 		return wa_msg
 
@@ -152,146 +176,112 @@ def flush_whatsapp_message_queue(from_test=False):
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
 
-	for message in get_queued_whatsapp_messages():
-		send_whatsapp_message(message.name, auto_commit)
+	for message_name in get_queued_whatsapp_messages():
+		send_whatsapp_message(message_name, auto_commit=auto_commit)
 
 
 def send_whatsapp_message(message_name, auto_commit=True, now=False):
+	from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
+
 	if are_whatsapp_messages_muted():
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
 
-	whatsapp_message = frappe.db.sql('''
-		select *
-		from `tabWhatsApp Message`
-		where name = %s
-		for update
-		''', message_name, as_dict=True)[0]
+	message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
 
-	if whatsapp_message.status != "Not Sent":
+	if message_doc.status != "Not Sent":
 		if auto_commit:
 			frappe.db.rollback()
 		return
 
-	frappe.db.sql("""
-		update `tabWhatsApp Message`
-		set status='Sending',
-		modified=%s
-		where name=%s
-		""", (now_datetime(), whatsapp_message.name), auto_commit=auto_commit)
-
-	if whatsapp_message.communication:
-		frappe.get_doc('Communication', whatsapp_message.communication).set_delivery_status(commit=auto_commit)
+	message_doc.db_set("status", "Sending", commit=auto_commit)
+	if message_doc.communication:
+		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
 
 	try:
+		doc = get_doc_for_notification_triggers(message_doc.reference_doctype, message_doc.reference_document_name)
+		run_before_send_method(doc, notification_type=message_doc.notification_type)
+
 		client = Twilio.get_twilio_client()
-		message_dict = get_whatsapp_message_dict(whatsapp_message)
+		message_dict = message_doc.get_message_dict()
 		response = client.messages.create(**message_dict)
 
-		frappe.db.sql("""UPDATE `tabWhatsApp Message`
-			SET sent_received = %s,
-			status = %s,
-			id = %s,
-			send_on = %s,
-			modified = %s
-			WHERE name = %s
-			""",
-			('Sent', response.status.title(), response.sid, response.date_sent, now_datetime(),whatsapp_message.name),
-			auto_commit=auto_commit)
+		message_doc.db_set({
+			"id": response.sid,
+			"status": response.status.title(),
+			"send_on": response.date_sent,
+		}, commit=auto_commit)
 
-		if whatsapp_message.communication:
-			frappe.get_doc('Communication', whatsapp_message.communication).set_delivery_status(commit=auto_commit)
+		if message_doc.communication:
+			frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
 
 		run_after_send_method(
-			doctype=whatsapp_message.reference_doctype,
-			docname=whatsapp_message.reference_document_name,
-			notification_type=whatsapp_message.notification_type
+			doctype=message_doc.reference_doctype,
+			docname=message_doc.reference_document_name,
+			notification_type=message_doc.notification_type
 		)
-
 
 	except (ConnectionError, Timeout, JobTimeoutException):
-		handle_timeout(whatsapp_message, auto_commit)
+		handle_timeout(message_doc, auto_commit)
 
 	except Exception as e:
-		handle_error(e, whatsapp_message, auto_commit, now)
-
-
-def get_whatsapp_message_dict(whatsapp_message):
-	args = {
-		'from_': whatsapp_message.from_,
-		'to': whatsapp_message.to,
-		'status_callback': '{}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback'.format(
-			get_site_url(frappe.local.site)
-		)
-	}
-
-	if whatsapp_message.template_sid:
-		args['content_sid'] = whatsapp_message.template_sid
-		if whatsapp_message.content_variables:
-			args['content_variables'] = whatsapp_message.content_variables
-	else:
-		args['body'] = whatsapp_message.message
-
-	if whatsapp_message.media_link:
-		args['media_url'] = [whatsapp_message.media_link]
-
-	return args
+		handle_error(e, message_doc, auto_commit, now)
 
 
 def get_queued_whatsapp_messages():
-	return frappe.db.sql('''
+	return frappe.db.sql_list("""
 		select name
 		from `tabWhatsApp Message`
-		where status='Not Sent'
-		order by creation
+		where status = 'Not Sent' and sent_received = 'Sent'
+		order by priority desc, creation asc
 		limit 500
-	''', as_dict=True)
-
-
-def clear_whatsapp_message_queue():
-	"""Expire WhatsApp messages not sent for 7 days. Called daily via scheduler."""
-	frappe.db.sql("""
-		UPDATE `tabWhatsApp Message`
-		SET `status`='Expired'
-		WHERE `modified` < (NOW() - INTERVAL '7' DAY)
-		AND `status`='Not Sent'
 	""")
 
 
-def handle_timeout(wa_message, auto_commit):
+def expire_whatsapp_message_queue():
+	"""Expire WhatsApp messages not sent for 7 days. Called daily via scheduler."""
 	frappe.db.sql("""
-		update `tabWhatsApp Message`
-		set status='Not Sent',
-		modified=%s
-		where name = %s""", (now_datetime(), wa_message.name), auto_commit=auto_commit)
-
-	if wa_message.communication:
-		frappe.get_doc('Communication', wa_message.communication).set_delivery_status(
-			commit=auto_commit)
+		UPDATE `tabWhatsApp Message`
+		SET status = 'Expired'
+		WHERE modified < (NOW() - INTERVAL '7' DAY) AND status = 'Not Sent'
+	""")
 
 
-def handle_error(e, message, auto_commit, now):
+def handle_timeout(message_doc, auto_commit):
+	message_doc.db_set("status", "Not Sent", commit=auto_commit)
+	if message_doc.communication:
+		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
+
+
+def handle_error(e, message_doc, auto_commit, now):
 	if auto_commit:
 		frappe.db.rollback()
 
-	if message.retry < 3:
-		frappe.db.sql("""
-			update `tabWhatsApp Message`
-			set status='Not Sent', retry=retry+1, error=%s, modified=%s
-			where name = %s
-			""", (str(e), now_datetime(), message.name), auto_commit=auto_commit)
+	if message_doc.retry < 3:
+		message_doc.db_set({
+			"status": "Not Sent",
+			"retry": message_doc.retry + 1,
+		}, commit=auto_commit)
 	else:
-		frappe.db.sql("""
-			update `tabWhatsApp Message`
-			set status='Error', error=%s, modified=%s
-			where name = %s
-			""", (str(e), now_datetime(), message.name), auto_commit=auto_commit)
+		message_doc.db_set({
+			"status": "Error",
+			"error": str(e),
+		}, commit=auto_commit)
 
-	if message.communication:
-		frappe.get_doc('Communication', message.communication).set_delivery_status(commit=auto_commit)
+	if message_doc.communication:
+		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
 
 	if now:
 		print(frappe.get_traceback())
 		raise e
 	else:
-		frappe.log_error(reference_doctype="WhatsApp Message", reference_name=message.name)
+		frappe.log_error(
+			title=_("Failed to send WhatsApp Message"),
+			message=str(e),
+			reference_doctype="WhatsApp Message",
+			reference_name=message_doc.name
+		)
+
+
+def on_doctype_update():
+	frappe.db.add_index('WhatsApp Message', ('status', 'priority', 'creation'), 'index_bulk_flush')

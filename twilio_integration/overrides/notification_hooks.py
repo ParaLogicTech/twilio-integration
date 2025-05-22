@@ -88,7 +88,7 @@ class NotificationTwilio(Notification):
 
 		communication = self.create_communication_for_whatsapp(doc, message=message, receiver_list=receiver_list)
 
-		WhatsAppMessage.queue_whatsapp_message(
+		WhatsAppMessage.send_whatsapp_message(
 			receiver_list=receiver_list,
 			message=message,
 			doctype=ref_doctype,
