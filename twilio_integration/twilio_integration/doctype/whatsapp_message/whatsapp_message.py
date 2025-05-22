@@ -112,6 +112,7 @@ def incoming_message_callback(args):
 		'status': 'Received'
 	}).insert(ignore_permissions=True)
 
+
 def run_before_send_method(doc=None, notification_type=None):
 	from frappe.email.doctype.notification.notification import run_validate_notification
 
@@ -122,11 +123,13 @@ def run_before_send_method(doc=None, notification_type=None):
 		if not validation:
 			frappe.throw(_("{0} Notification Validation Failed").format(notification_type))
 
+
 def run_after_send_method(doctype=None, docname=None, notification_type=None):
 	from frappe.core.doctype.notification_count.notification_count import add_notification_count
 
 	if doctype and docname and notification_type:
 		add_notification_count(doctype, docname, notification_type, 'WhatsApp')
+
 
 def are_whatsapp_messages_muted():
 	from frappe.utils import cint
@@ -136,8 +139,10 @@ def are_whatsapp_messages_muted():
 
 	return frappe.flags.mute_whatsapp or cint(frappe.conf.get("mute_whatsapp") or 0) or False
 
+
 def is_whatsapp_enabled():
 	return True if frappe.get_cached_value("Twilio Settings", None, 'enabled') else False
+
 
 def flush_whatsapp_message_queue(from_test=False):
 	"""Flush queued WhatsApp Messages, called from scheduler"""
@@ -149,6 +154,7 @@ def flush_whatsapp_message_queue(from_test=False):
 
 	for message in get_queued_whatsapp_messages():
 		send_whatsapp_message(message.name, auto_commit)
+
 
 def send_whatsapp_message(message_name, auto_commit=True, now=False):
 	if are_whatsapp_messages_muted():
@@ -209,6 +215,7 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 	except Exception as e:
 		handle_error(e, whatsapp_message, auto_commit, now)
 
+
 def get_whatsapp_message_dict(whatsapp_message):
 	args = {
 		'from_': whatsapp_message.from_,
@@ -230,14 +237,16 @@ def get_whatsapp_message_dict(whatsapp_message):
 
 	return args
 
+
 def get_queued_whatsapp_messages():
 	return frappe.db.sql('''
 		select name
 		from `tabWhatsApp Message`
 		where status='Not Sent'
-		order by priority desc, creation asc
+		order by creation asc
 		limit 500
 	''', as_dict=True)
+
 
 def clear_whatsapp_message_queue():
 	"""Expire WhatsApp messages not sent for 7 days. Called daily via scheduler."""
@@ -246,6 +255,7 @@ def clear_whatsapp_message_queue():
 		SET status='Expired'
 		WHERE modified < (NOW() - INTERVAL '7' DAY')
 		AND status='Not Sent'""")
+
 
 def handle_timeout(wa_message, auto_commit):
 	frappe.db.sql("""
@@ -257,6 +267,7 @@ def handle_timeout(wa_message, auto_commit):
 	if wa_message.communication:
 		frappe.get_doc('Communication', wa_message.communication).set_delivery_status(
 			commit=auto_commit)
+
 
 def handle_error(e, message, auto_commit, now):
 	if auto_commit:
