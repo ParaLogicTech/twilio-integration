@@ -97,6 +97,7 @@ class NotificationTwilio(Notification):
 			communication=communication,
 			template_sid=template_sid,
 			content_variables=json.dumps(content_variables) if content_variables else None,
+			now=False,
 		)
 
 	def create_communication_for_whatsapp(self, doc, message=None, receiver_list=None):

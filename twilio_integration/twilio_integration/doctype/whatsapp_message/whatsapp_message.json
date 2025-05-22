@@ -13,20 +13,24 @@
   "message",
   "media_link",
   "status",
-  "send_on",
   "reference_doctype",
   "reference_document_name",
   "profile_name",
   "communication",
   "notification_type",
   "template_sid",
-  "content_variables"
+  "content_variables",
+  "error",
+  "send_on",
+  "retry",
+  "priority"
  ],
  "fields": [
   {
    "fieldname": "id",
    "fieldtype": "Data",
    "label": "ID",
+   "no_copy": 1,
    "read_only": 1,
    "search_index": 1
   },
@@ -44,12 +48,15 @@
    "read_only": 1
   },
   {
+   "default": "Not Sent",
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "\nQueued\nSent\nReceived\nDelivered\nRead\nUndelivered\nFailed",
-   "read_only": 1
+   "no_copy": 1,
+   "options": "Not Sent\nSending\nQueued\nSent\nReceived\nDelivered\nRead\nUndelivered\nFailed\nExpired\nError",
+   "read_only": 1,
+   "reqd": 1
   },
   {
    "fieldname": "reference_doctype",
@@ -68,12 +75,14 @@
    "read_only": 1
   },
   {
+   "default": "Sent",
    "fieldname": "sent_received",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Sent/Received",
    "options": "Sent\nReceived",
-   "read_only": 1
+   "read_only": 1,
+   "reqd": 1
   },
   {
    "fieldname": "from_",
@@ -105,6 +114,7 @@
    "fieldname": "communication",
    "fieldtype": "Link",
    "label": "Communication",
+   "no_copy": 1,
    "options": "Communication",
    "read_only": 1,
    "search_index": 1
@@ -128,13 +138,35 @@
    "fieldtype": "Code",
    "label": "Content Variables",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "retry",
+   "fieldtype": "Int",
+   "label": "Retry",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Code",
+   "label": "Error",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority",
+   "read_only": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-19 22:58:40.735169",
+ "modified": "2025-05-22 11:47:40.518777",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
