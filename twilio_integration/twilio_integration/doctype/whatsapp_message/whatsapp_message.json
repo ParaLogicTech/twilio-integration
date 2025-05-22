@@ -140,14 +140,15 @@
   {
    "fieldname": "error",
    "fieldtype": "Small Text",
-   "label": "Error"
+   "label": "Error",
+   "read_only": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-21 16:40:53.259254",
+ "modified": "2025-05-22 10:18:13.746915",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
