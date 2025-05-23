@@ -251,7 +251,7 @@ class WhatsAppMessage(Document):
 			'child_name': child_name,
 			'party_doctype': party_doctype,
 			'party': party,
-			'attachment': json.dumps(attachment),
+			'attachment': json.dumps(attachment) if attachment else None,
 			'communication': communication,
 			'notification_type': notification_type,
 			'template_sid': template_sid,
