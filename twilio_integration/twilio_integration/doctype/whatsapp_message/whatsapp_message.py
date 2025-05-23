@@ -9,6 +9,7 @@ from frappe.utils import get_site_url, convert_utc_to_system_timezone
 from ...twilio_handler import Twilio
 from rq.timeouts import JobTimeoutException
 from requests.exceptions import ConnectionError, Timeout
+from urllib.parse import quote
 import json
 
 
@@ -18,12 +19,12 @@ class WhatsAppMessage(Document):
 			frappe.throw(_('Only Administrator can delete WhatsApp Message'))
 
 	def get_message_dict(self):
+		site_url = get_site_url(frappe.local.site)
+
 		args = {
-			'from_': self.from_,
-			'to': self.to,
-			'status_callback': '{0}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback'.format(
-				get_site_url(frappe.local.site)
-			)
+			"from_": self.from_,
+			"to": self.to,
+			"status_callback": f"{site_url}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback"
 		}
 
 		if self.template_sid:
@@ -33,10 +34,63 @@ class WhatsAppMessage(Document):
 		else:
 			args['body'] = self.message
 
-		if self.media_link:
-			args['media_url'] = [self.media_link]
+		attachment = self.get_attachment()
+		if attachment:
+			args['media_url'] = [
+				f"{site_url}/api/method/twilio_integration.twilio_integration.api.download_whatsapp_media?message_name={quote(self.name)}"
+			]
 
 		return args
+
+	def get_attachment(self, store_print_attachment=False):
+		attachment = None
+		if self.attachment:
+			attachment = json.loads(self.attachment)
+
+		if not attachment:
+			return None
+
+		if store_print_attachment and attachment.get("print_format_attachment") == 1:
+			updated_attachment = self.store_print_attachment(attachment, auto_commit=True)
+			if updated_attachment:
+				attachment = updated_attachment
+
+		return attachment
+
+	def store_print_attachment(self, attachment, auto_commit=False):
+		if not frappe.get_system_settings("store_attached_pdf_document"):
+			return
+
+		print_format_file = self.get_print_format_file(attachment)
+
+		file_data = frappe._dict(file_name=print_format_file["fname"], is_private=1)
+
+		# Store on communication if available, else email queue doc
+		if self.communication:
+			file_data.attached_to_doctype = "Communication"
+			file_data.attached_to_name = self.communication
+		else:
+			file_data.attached_to_doctype = self.doctype
+			file_data.attached_to_name = self.name
+
+		fid = frappe.db.get_value("File", file_data)
+		if not fid:
+			file = frappe.new_doc("File", **file_data)
+			file.content = print_format_file["fcontent"]
+			file.insert(ignore_permissions=True)
+			fid = file.name
+
+		updated_attachment = {"fid": fid}
+		self.db_set("attachment", json.dumps(updated_attachment), commit=auto_commit)
+
+		return updated_attachment
+
+	@classmethod
+	def get_print_format_file(cls, attachment):
+		attachment = attachment.copy()
+		attachment.pop("print_format_attachment", None)
+		print_format_file = frappe.attach_print(**attachment)
+		return print_format_file
 
 	@classmethod
 	def send_whatsapp_message(
@@ -50,9 +104,9 @@ class WhatsAppMessage(Document):
 		child_name=None,
 		party_doctype=None,
 		party=None,
-		media=None,
 		template_sid=None,
 		content_variables=None,
+		attachment=None,
 		automated=False,
 		delayed=False,
 		now=False,
@@ -68,13 +122,14 @@ class WhatsAppMessage(Document):
 			if not isinstance(receiver_list, list):
 				receiver_list = [receiver_list]
 
-		communication = cls.create_communication(
+		communication = cls.create_outgoing_communication(
 			receiver_list=receiver_list,
 			message=message,
 			reference_doctype=reference_doctype,
 			reference_name=reference_name,
 			party_doctype=party_doctype,
 			party=party,
+			attachment=attachment,
 			automated=automated,
 		)
 
@@ -91,8 +146,8 @@ class WhatsAppMessage(Document):
 				child_name=child_name,
 				party_doctype=party_doctype,
 				party=party,
-				media=media,
 				communication=communication,
+				attachment=attachment,
 				template_sid=template_sid,
 				content_variables=content_variables,
 				notification_type=notification_type,
@@ -109,7 +164,7 @@ class WhatsAppMessage(Document):
 					)
 
 	@classmethod
-	def create_communication(
+	def create_outgoing_communication(
 		cls,
 		receiver_list,
 		message,
@@ -117,8 +172,11 @@ class WhatsAppMessage(Document):
 		reference_name,
 		party_doctype=None,
 		party=None,
+		attachment=None,
 		automated=False,
 	):
+		from frappe.core.doctype.communication.email import add_attachments
+
 		if not reference_doctype or not reference_name:
 			return
 
@@ -126,14 +184,31 @@ class WhatsAppMessage(Document):
 			"doctype": "Communication",
 			"communication_type": "Automated Message" if automated else "Communication",
 			"communication_medium": "WhatsApp",
-			"subject": "WhatsApp",
+			"subject": "Outgoing WhatsApp",
 			"content": message,
 			"sent_or_received": "Sent",
 			"reference_doctype": reference_doctype,
 			"reference_name": reference_name,
 			"sender": frappe.session.user,
 			"recipients": "\n".join(receiver_list),
-			"phone_no": receiver_list[0] if len(receiver_list) == 1 else None
+			"phone_no": receiver_list[0] if len(receiver_list) == 1 else None,
+			"has_attachment": 1 if attachment else 0,
+		})
+
+		if party_doctype and party:
+			communication.append("timeline_links", {
+				"link_doctype": party_doctype,
+				"link_name": party
+			})
+
+		communication.insert(ignore_permissions=True)
+
+		if attachment:
+			if isinstance(attachment, str):
+				attachment = json.loads(attachment)
+			add_attachments(communication.name, [attachment])
+
+		return communication.get("name")
 		})
 
 		if party_doctype and party:
@@ -156,8 +231,8 @@ class WhatsAppMessage(Document):
 		child_name=None,
 		party_doctype=None,
 		party=None,
-		media=None,
 		communication=None,
+		attachment=None,
 		template_sid=None,
 		content_variables=None,
 		notification_type=None,
@@ -176,7 +251,7 @@ class WhatsAppMessage(Document):
 			'child_name': child_name,
 			'party_doctype': party_doctype,
 			'party': party,
-			'media_link': media,
+			'attachment': json.dumps(attachment),
 			'communication': communication,
 			'notification_type': notification_type,
 			'template_sid': template_sid,
@@ -274,7 +349,7 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 
 	message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
 
-	if message_doc.status != "Not Sent":
+	if message_doc.status != "Not Sent" or message_doc.sent_received != "Sent":
 		if auto_commit:
 			frappe.db.rollback()
 		return
@@ -291,7 +366,7 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 		message_dict = message_doc.get_message_dict()
 		response = client.messages.create(**message_dict)
 
-		date_sent = response.date_sent
+		date_sent = response.date_sent or response.date_created
 		if date_sent:
 			date_sent = convert_utc_to_system_timezone(date_sent).replace(tzinfo=None)
 

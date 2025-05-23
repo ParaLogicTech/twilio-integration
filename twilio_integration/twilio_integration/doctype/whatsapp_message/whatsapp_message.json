@@ -34,7 +34,8 @@
   "party",
   "column_break_nkwx",
   "communication",
-  "media_link"
+  "media_section",
+  "attachment"
  ],
  "fields": [
   {
@@ -93,14 +94,6 @@
    "fieldname": "from_",
    "fieldtype": "Data",
    "label": "From",
-   "read_only": 1
-  },
-  {
-   "description": "Must be public.",
-   "fieldname": "media_link",
-   "fieldtype": "Data",
-   "label": "Media Link",
-   "options": "URL",
    "read_only": 1
   },
   {
@@ -170,7 +163,8 @@
   },
   {
    "fieldname": "section_break_8gd5",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Reference"
   },
   {
    "fieldname": "column_break_nkwx",
@@ -178,7 +172,8 @@
   },
   {
    "fieldname": "section_break_jhlu",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Message"
   },
   {
    "fieldname": "column_break_o6kp",
@@ -226,7 +221,17 @@
    "fieldtype": "Data",
    "in_standard_filter": 1,
    "label": "Reference Name",
-   "options": "reference_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "media_section",
+   "fieldtype": "Section Break",
+   "label": "Media"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Code",
+   "label": "Attachment",
    "read_only": 1
   }
  ],
@@ -234,7 +239,7 @@
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-22 23:30:22.588207",
+ "modified": "2025-05-23 14:42:52.116702",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",

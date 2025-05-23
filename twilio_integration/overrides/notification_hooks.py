@@ -88,6 +88,8 @@ class NotificationTwilio(Notification):
 
 		timeline_doctype, timeline_name = self.get_timeline_doctype_and_name(doc)
 
+		attachments = self.get_attachment(doc)
+
 		WhatsAppMessage.send_whatsapp_message(
 			receiver_list=receiver_list,
 			message=message,
@@ -99,6 +101,7 @@ class NotificationTwilio(Notification):
 			template_sid=template_sid,
 			content_variables=json.dumps(content_variables) if content_variables else None,
 			automated=True,
+			attachment=attachments[0] if attachments else None,
 			now=False,
 		)
 
