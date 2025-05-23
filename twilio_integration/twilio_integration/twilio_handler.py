@@ -2,11 +2,13 @@ from twilio.rest import Client as TwilioClient
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse, Dial
+from twilio.request_validator import RequestValidator
 
 import frappe
 from frappe import _
 from frappe.utils.password import get_decrypted_password
 from .utils import get_public_url, merge_dicts
+from functools import wraps
 
 
 class Twilio:
@@ -235,3 +237,31 @@ def get_the_call_attender(owners):
 		if ((details['call_receiving_device'] == 'Phone' and details['mobile_no']) or
 			(details['call_receiving_device'] == 'Computer' and name in current_loggedin_users)):
 			return details
+
+
+def validate_twilio_request(f):
+	"""Validates that incoming requests genuinely originated from Twilio"""
+	@wraps(f)
+	def decorated_function(*args, **kwargs):
+		twilio_settings = frappe.get_doc("Twilio Settings")
+		if not twilio_settings.enabled:
+			frappe.throw(_("Twilio is not enabled"), exc=frappe.PermissionError)
+
+		auth_token = get_decrypted_password("Twilio Settings", "Twilio Settings", 'auth_token')
+
+		validator = RequestValidator(auth_token)
+
+		request_valid = validator.validate(
+			frappe.request.url,
+			frappe.request.form or frappe.request.data,
+			frappe.request.headers.get("X-Twilio-Signature", "")
+		)
+
+		# Continue processing the request if it's valid, return a 403 error if
+		# it's not
+		if request_valid:
+			return f(*args, **kwargs)
+		else:
+			frappe.throw(_("Invalid Signature"), exc=frappe.PermissionError)
+
+	return decorated_function

@@ -3,7 +3,7 @@ from werkzeug.wrappers import Response
 import frappe
 from frappe import _
 from frappe.contacts.doctype.contact.contact import get_contact_with_phone_number
-from .twilio_handler import Twilio, IncomingCall, TwilioCallDetails
+from .twilio_handler import Twilio, IncomingCall, TwilioCallDetails, validate_twilio_request
 from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import (
 	incoming_message_callback,
 	outgoing_message_status_callback
@@ -40,6 +40,7 @@ def generate_access_token():
 
 
 @frappe.whitelist(allow_guest=True)
+@validate_twilio_request
 def voice(**kwargs):
 	"""This is a webhook called by twilio to get instructions when the voice call request comes to twilio server.
 	"""
@@ -66,6 +67,7 @@ def voice(**kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
+@validate_twilio_request
 def twilio_incoming_call_handler(**kwargs):
 	args = frappe._dict(kwargs)
 	call_details = TwilioCallDetails(args)
@@ -104,6 +106,7 @@ def update_call_log(call_sid, status=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@validate_twilio_request
 def update_recording_info(**kwargs):
 	try:
 		args = frappe._dict(kwargs)
@@ -130,6 +133,7 @@ def get_contact_details(phone):
 
 
 @frappe.whitelist(allow_guest=True)
+@validate_twilio_request
 def incoming_whatsapp_message_handler(**kwargs):
 	"""This is a webhook called by Twilio when a WhatsApp message is received.
 	"""
@@ -143,6 +147,7 @@ def incoming_whatsapp_message_handler(**kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
+@validate_twilio_request
 def whatsapp_message_status_callback(**kwargs):
 	"""This is a webhook called by Twilio whenever sent WhatsApp message status is changed.
 	"""
