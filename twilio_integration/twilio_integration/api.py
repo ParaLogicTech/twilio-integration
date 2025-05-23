@@ -139,11 +139,20 @@ def incoming_whatsapp_message_handler(**kwargs):
 	"""This is a webhook called by Twilio when a WhatsApp message is received.
 	"""
 	args = frappe._dict(kwargs)
-	incoming_message_callback(args)
-	resp = MessagingResponse()
 
-	# Add a message
-	resp.message(frappe.db.get_single_value('Twilio Settings', 'reply_message'))
+	response = incoming_message_callback(args)
+
+	reply_message = response.get("reply_message")
+	disable_default_reply = response.get("disable_default_reply")
+
+	# Default Auto Reply
+	if not reply_message and not disable_default_reply:
+		reply_message = frappe.db.get_single_value('Twilio Settings', 'reply_message')
+
+	resp = MessagingResponse()
+	if reply_message:
+		resp.message(reply_message)
+
 	return Response(resp.to_xml(), mimetype='text/xml')
 
 

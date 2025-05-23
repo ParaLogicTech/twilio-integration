@@ -34,6 +34,7 @@
   "party",
   "column_break_nkwx",
   "communication",
+  "context_message",
   "media_section",
   "attachment"
  ],
@@ -233,13 +234,21 @@
    "fieldtype": "Code",
    "label": "Attachment",
    "read_only": 1
+  },
+  {
+   "fieldname": "context_message",
+   "fieldtype": "Link",
+   "label": "Context Message",
+   "no_copy": 1,
+   "options": "WhatsApp Message",
+   "read_only": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-23 14:42:52.116702",
+ "modified": "2025-05-23 16:21:26.328152",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
