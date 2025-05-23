@@ -168,9 +168,9 @@ def whatsapp_message_status_callback(**kwargs):
 @frappe.whitelist(allow_guest=True)
 @validate_twilio_request
 def download_whatsapp_media(**kwargs):
-	message_name = kwargs.get("message_name")
-	if not frappe.form_dict.message_name:
-		frappe.throw(_("message_name parameter missing"), exc=frappe.ValidationError)
+	message_name = kwargs.get("message_id") or kwargs.get("message") or kwargs.get("id")
+	if not message_name:
+		frappe.throw(_("Message ID missing"), exc=frappe.ValidationError)
 
 	message_doc = frappe.get_doc("WhatsApp Message", message_name)
 	attachment = message_doc.get_attachment(store_print_attachment=True)

@@ -74,12 +74,12 @@ class NotificationTwilio(Notification):
 		if notification_type:
 			set_notification_last_scheduled(ref_doctype, ref_name, notification_type, "WhatsApp")
 
-		template_sid = None
+		whatsapp_message_template = None
 		content_variables = None
 
 		if self.use_whatsapp_template and self.whatsapp_message_template:
 			template = frappe.get_cached_doc("WhatsApp Message Template", self.whatsapp_message_template)
-			template_sid = template.template_sid
+			whatsapp_message_template = self.whatsapp_message_template
 
 			content_variables = template.get_content_variables(context)
 			message = template.get_rendered_body(context, content_variables=content_variables)
@@ -98,8 +98,8 @@ class NotificationTwilio(Notification):
 			reference_name=ref_name,
 			party_doctype=timeline_doctype,
 			party=timeline_name,
-			template_sid=template_sid,
-			content_variables=json.dumps(content_variables) if content_variables else None,
+			whatsapp_message_template=whatsapp_message_template,
+			content_variables=content_variables or None,
 			automated=True,
 			attachment=attachments[0] if attachments else None,
 			now=False,

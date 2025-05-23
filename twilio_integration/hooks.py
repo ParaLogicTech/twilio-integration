@@ -12,6 +12,18 @@ app_license = "MIT"
 
 boot_session = "twilio_integration.boot.boot_session"
 
+override_whitelisted_methods = {
+	"twilio.whatsapp_media": "twilio_integration.twilio_integration.api.download_whatsapp_media",
+	"twilio.whatsapp_message_status_callback": "twilio_integration.twilio_integration.api.whatsapp_message_status_callback",
+}
+
+website_redirects = [
+	{
+		"source": r"/whatsapp-media/(.*)",
+		"target": r"/api/method/twilio.whatsapp_media?id=\1",
+	}
+]
+
 override_doctype_class = {
 	"Notification": "twilio_integration.overrides.notification_hooks.NotificationTwilio",
 	"Communication": "twilio_integration.overrides.communication_hooks.CommunicationTwilio",

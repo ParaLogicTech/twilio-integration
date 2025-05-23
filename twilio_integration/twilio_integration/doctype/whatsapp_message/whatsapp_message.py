@@ -25,7 +25,7 @@ class WhatsAppMessage(Document):
 		args = {
 			"from_": self.from_,
 			"to": self.to,
-			"status_callback": f"{site_url}/api/method/twilio_integration.twilio_integration.api.whatsapp_message_status_callback"
+			"status_callback": f"{site_url}/api/method/twilio.whatsapp_message_status_callback"
 		}
 
 		if self.template_sid:
@@ -37,9 +37,7 @@ class WhatsAppMessage(Document):
 
 		attachment = self.get_attachment()
 		if attachment:
-			args['media_url'] = [
-				f"{site_url}/api/method/twilio_integration.twilio_integration.api.download_whatsapp_media?message_name={quote(self.name)}"
-			]
+			args['media_url'] = [f"{site_url}/api/method/twilio.whatsapp_media?id={quote(self.name)}"]
 
 		return args
 
@@ -105,7 +103,7 @@ class WhatsAppMessage(Document):
 		child_name=None,
 		party_doctype=None,
 		party=None,
-		template_sid=None,
+		whatsapp_message_template=None,
 		content_variables=None,
 		attachment=None,
 		automated=False,
@@ -149,7 +147,7 @@ class WhatsAppMessage(Document):
 				party=party,
 				communication=communication,
 				attachment=attachment,
-				template_sid=template_sid,
+				whatsapp_message_template=whatsapp_message_template,
 				content_variables=content_variables,
 				notification_type=notification_type,
 			)
@@ -279,11 +277,13 @@ class WhatsAppMessage(Document):
 		party=None,
 		communication=None,
 		attachment=None,
-		template_sid=None,
+		whatsapp_message_template=None,
 		content_variables=None,
 		notification_type=None,
 	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
+
+		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else None
 
 		wa_msg = frappe.new_doc("WhatsApp Message")
 		wa_msg.update({
@@ -300,12 +300,20 @@ class WhatsAppMessage(Document):
 			'attachment': json.dumps(attachment) if attachment else None,
 			'communication': communication,
 			'notification_type': notification_type,
-			'template_sid': template_sid,
-			'content_variables': content_variables,
+			'template_sid': template.template_sid if template else None,
 			'status': 'Not Sent',
 			'retry': 0,
 		})
 		wa_msg.insert(ignore_permissions=True)
+
+		if template.media_variable and template.media_variable not in content_variables:
+			if template.media_variable_type == "Message ID":
+				content_variables[template.media_variable] = quote(wa_msg.name)
+			else:
+				content_variables[template.media_variable] = f"api/method/twilio.whatsapp_media?id={quote(wa_msg.name)}"
+
+		if content_variables:
+			wa_msg.db_set("content_variables", json.dumps(content_variables))
 
 		return wa_msg
 
@@ -435,6 +443,7 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 			"id": response.sid,
 			"status": response.status.title(),
 			"date_sent": date_sent,
+			"error": None,
 		}, commit=auto_commit)
 
 		if message_doc.communication:
@@ -486,6 +495,7 @@ def handle_error(e, message_doc, auto_commit, now):
 		message_doc.db_set({
 			"status": "Not Sent",
 			"retry": message_doc.retry + 1,
+			"error": str(e),
 		}, commit=auto_commit)
 	else:
 		message_doc.db_set({

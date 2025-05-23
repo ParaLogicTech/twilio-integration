@@ -8,6 +8,10 @@
  "field_order": [
   "template_name",
   "template_sid",
+  "column_break_4l5u",
+  "media_variable",
+  "media_variable_type",
+  "section_break_xvor",
   "template_body",
   "parameters"
  ],
@@ -39,11 +43,31 @@
    "fieldtype": "Table",
    "label": "Parameters",
    "options": "WhatsApp Template Parameter"
+  },
+  {
+   "fieldname": "column_break_4l5u",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "media_variable",
+   "fieldtype": "Data",
+   "label": "Media Variable"
+  },
+  {
+   "fieldname": "section_break_xvor",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "media_variable",
+   "fieldname": "media_variable_type",
+   "fieldtype": "Select",
+   "label": "Media Variable Type",
+   "options": "Path to File\nMessage ID"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-06 01:08:08.955360",
+ "modified": "2025-05-24 00:22:49.559892",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message Template",
@@ -63,6 +87,7 @@
    "write": 1
   }
  ],
+ "search_fields": "template_sid",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
