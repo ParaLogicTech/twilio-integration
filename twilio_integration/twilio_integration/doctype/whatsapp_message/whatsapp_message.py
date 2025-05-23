@@ -208,6 +208,46 @@ class WhatsAppMessage(Document):
 				attachment = json.loads(attachment)
 			add_attachments(communication.name, [attachment])
 
+		return communication.get("name")
+
+	@classmethod
+	def create_incoming_communication(
+		cls,
+		from_,
+		to,
+		message,
+		reference_doctype,
+		reference_name,
+		party_doctype=None,
+		party=None,
+		profile_name=None,
+		in_reply_to=None,
+	):
+		if not reference_doctype or not reference_name:
+			return
+
+		communication = frappe.get_doc({
+			"doctype": "Communication",
+			"communication_type": "Communication",
+			"communication_medium": "WhatsApp",
+			"subject": "Incoming WhatsApp",
+			"content": message,
+			"sent_or_received": "Received",
+			"reference_doctype": reference_doctype,
+			"reference_name": reference_name,
+			"recipients": to,
+			"sender": from_,
+			"sender_full_name": profile_name,
+			"phone_no": from_,
+			"in_reply_to": in_reply_to,
+		})
+
+		if party_doctype and party:
+			communication.append("timeline_links", {
+				"link_doctype": party_doctype,
+				"link_name": party
+			})
+
 		communication.insert(ignore_permissions=True)
 		return communication.get("name")
 
@@ -254,19 +294,22 @@ class WhatsAppMessage(Document):
 
 		return wa_msg
 
+	@classmethod
+	def get_last_delivered_message(cls, to, from_):
+		return frappe.db.get_value("WhatsApp Message", {
+			"to": to,
+			"from_": from_,
+			"sent_received": "Sent",
+			"status": ('in', ('Delivered', 'Read'))
+		}, order_by="date_sent desc")
 
-def incoming_message_callback(args):
-	wa_msg = frappe.get_doc({
-		'doctype': 'WhatsApp Message',
-		'from_': args.From,
-		'to': args.To,
-		'message': args.Body,
-		'profile_name': args.ProfileName,
-		'sent_received': args.SmsStatus.title(),
-		'id': args.MessageSid,
-		'date_sent': frappe.utils.now(),
-		'status': 'Received'
-	}).insert(ignore_permissions=True)
+	@classmethod
+	def get_replied_to_message(cls, original_sid, sender):
+		return frappe.db.get_value("WhatsApp Message", {
+			"id": original_sid,
+			"from_": sender,
+			"sent_received": "Sent",
+		})
 
 
 def outgoing_message_status_callback(args, auto_commit=False):
@@ -438,5 +481,67 @@ def handle_error(e, message_doc, auto_commit, now):
 		)
 
 
+def incoming_message_callback(args):
+	incoming_message = frappe.new_doc("WhatsApp Message")
+
+	incoming_message.update({
+		"from_": args.From,
+		"to": args.To,
+		"message": args.Body,
+		"profile_name": args.ProfileName,
+		"sent_received": "Received",
+		"id": args.MessageSid,
+		"date_sent": frappe.utils.now(),
+		"status": "Received"
+	})
+
+	if args.OriginalRepliedMessageSid:
+		context_message_name = WhatsAppMessage.get_replied_to_message(
+			args.OriginalRepliedMessageSid,
+			args.OriginalRepliedMessageSender
+		)
+	else:
+		context_message_name = WhatsAppMessage.get_last_delivered_message(args.From, args.To)
+
+	if context_message_name:
+		context_message = frappe.get_doc("WhatsApp Message", context_message_name)
+
+		incoming_message.update({
+			"context_message": context_message.name,
+			"party_doctype": context_message.party_doctype,
+			"party": context_message.party,
+		})
+
+		if (
+			context_message.reference_doctype
+			and context_message.reference_name
+			and frappe.db.exists(context_message.reference_doctype, context_message.reference_name)
+		):
+			incoming_message.update({
+				"reference_doctype": context_message.reference_doctype,
+				"reference_name": context_message.reference_name,
+			})
+
+		incoming_message.communication = WhatsAppMessage.create_incoming_communication(
+			from_=args.From,
+			to=args.To,
+			message=args.Body,
+			reference_doctype=incoming_message.reference_doctype,
+			reference_name=incoming_message.reference_name,
+			party_doctype=incoming_message.party_doctype,
+			party=incoming_message.party,
+			profile_name=args.ProfileName,
+			in_reply_to=context_message.communication,
+		)
+
+	incoming_message.insert(ignore_permissions=True)
+
+	return frappe._dict({
+		"reply_message": None,
+		"disable_default_reply": False,
+	})
+
+
 def on_doctype_update():
 	frappe.db.add_index('WhatsApp Message', ('status', 'priority', 'creation'), 'index_bulk_flush')
+	frappe.db.add_index('WhatsApp Message', ('`to`', 'status', 'date_sent'), 'index_last_delivered')
