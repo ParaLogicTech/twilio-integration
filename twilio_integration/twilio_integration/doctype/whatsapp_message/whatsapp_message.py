@@ -208,15 +208,6 @@ class WhatsAppMessage(Document):
 				attachment = json.loads(attachment)
 			add_attachments(communication.name, [attachment])
 
-		return communication.get("name")
-		})
-
-		if party_doctype and party:
-			communication.append("timeline_links", {
-				"link_doctype": party_doctype,
-				"link_name": party
-			})
-
 		communication.insert(ignore_permissions=True)
 		return communication.get("name")
 
