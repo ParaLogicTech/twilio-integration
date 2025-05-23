@@ -140,16 +140,6 @@ def incoming_whatsapp_message_handler(**kwargs):
 	"""
 	args = frappe._dict(kwargs)
 
-	print()
-	print()
-	print()
-	print()
-	print(frappe.form_dict)
-	print()
-	print()
-	print()
-	print()
-
 	response = incoming_message_callback(args)
 
 	reply_message = response.get("reply_message")

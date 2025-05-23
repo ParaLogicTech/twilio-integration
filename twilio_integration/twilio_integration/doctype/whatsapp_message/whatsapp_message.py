@@ -5,11 +5,12 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
-from frappe.utils import get_site_url, convert_utc_to_system_timezone
+from frappe.utils import get_site_url, convert_utc_to_system_timezone, time_diff, now_datetime, cint, flt
 from ...twilio_handler import Twilio
 from rq.timeouts import JobTimeoutException
 from requests.exceptions import ConnectionError, Timeout
 from urllib.parse import quote
+from datetime import timedelta
 import json
 
 
@@ -184,7 +185,7 @@ class WhatsAppMessage(Document):
 			"doctype": "Communication",
 			"communication_type": "Automated Message" if automated else "Communication",
 			"communication_medium": "WhatsApp",
-			"subject": "Outgoing WhatsApp",
+			"subject": "WhatsApp Message Sent",
 			"content": message,
 			"sent_or_received": "Sent",
 			"reference_doctype": reference_doctype,
@@ -226,19 +227,33 @@ class WhatsAppMessage(Document):
 		if not reference_doctype or not reference_name:
 			return
 
+		to_number = to
+		if to_number.startswith("whatsapp:"):
+			to_number = to_number[9:]
+
+		from_number = from_
+		if from_number.startswith("whatsapp:"):
+			from_number = from_number[9:]
+
+		sender_name = profile_name
+		if sender_name:
+			sender_name = f"{sender_name} ({from_number})"
+		else:
+			sender_name = from_number
+
 		communication = frappe.get_doc({
 			"doctype": "Communication",
 			"communication_type": "Communication",
 			"communication_medium": "WhatsApp",
-			"subject": "Incoming WhatsApp",
+			"subject": "WhatsApp Message Received",
 			"content": message,
 			"sent_or_received": "Received",
 			"reference_doctype": reference_doctype,
 			"reference_name": reference_name,
-			"recipients": to,
-			"sender": from_,
-			"sender_full_name": profile_name,
-			"phone_no": from_,
+			"recipients": to_number,
+			# "sender": from_number,
+			"sender_full_name": sender_name,
+			"phone_no": from_number,
 			"in_reply_to": in_reply_to,
 		})
 
@@ -295,13 +310,27 @@ class WhatsAppMessage(Document):
 		return wa_msg
 
 	@classmethod
-	def get_last_delivered_message(cls, to, from_):
-		return frappe.db.get_value("WhatsApp Message", {
+	def get_last_delivered_message(cls, to, from_, window_hours=None):
+		message = frappe.db.get_value("WhatsApp Message", {
 			"to": to,
 			"from_": from_,
 			"sent_received": "Sent",
-			"status": ('in', ('Delivered', 'Read'))
-		}, order_by="date_sent desc")
+			"status": ('in', ('Delivered', 'Read')),
+			"date_sent": ('is', 'set'),
+		}, fieldname=["name", "date_sent"], order_by="date_sent desc", as_dict=True)
+
+		if not message:
+			return None
+
+		window_hours = flt(window_hours)
+		if window_hours > 0:
+			now = now_datetime()
+			window_timedelta = timedelta(hours=window_hours)
+			diff = time_diff(now, message.date_sent)
+			if diff > window_timedelta:
+				return None
+
+		return message.name
 
 	@classmethod
 	def get_replied_to_message(cls, original_sid, sender):
@@ -350,8 +379,6 @@ def run_after_send_method(reference_doctype=None, reference_name=None, notificat
 
 
 def are_whatsapp_messages_muted():
-	from frappe.utils import cint
-
 	if not is_whatsapp_enabled():
 		return True
 
@@ -482,6 +509,23 @@ def handle_error(e, message_doc, auto_commit, now):
 
 
 def incoming_message_callback(args):
+	out = frappe._dict({
+		"reply_message": None,
+		"disable_default_reply": False,
+	})
+
+	# Determine previous outgoing message for context
+	if args.OriginalRepliedMessageSid:
+		context_message_name = WhatsAppMessage.get_replied_to_message(
+			args.OriginalRepliedMessageSid,
+			args.OriginalRepliedMessageSender
+		)
+	else:
+		context_message_name = WhatsAppMessage.get_last_delivered_message(args.From, args.To, window_hours=24)
+
+	if not context_message_name:
+		return out
+
 	incoming_message = frappe.new_doc("WhatsApp Message")
 
 	incoming_message.update({
@@ -495,51 +539,39 @@ def incoming_message_callback(args):
 		"status": "Received"
 	})
 
-	if args.OriginalRepliedMessageSid:
-		context_message_name = WhatsAppMessage.get_replied_to_message(
-			args.OriginalRepliedMessageSid,
-			args.OriginalRepliedMessageSender
-		)
-	else:
-		context_message_name = WhatsAppMessage.get_last_delivered_message(args.From, args.To)
+	context_message = frappe.get_doc("WhatsApp Message", context_message_name)
 
-	if context_message_name:
-		context_message = frappe.get_doc("WhatsApp Message", context_message_name)
+	incoming_message.update({
+		"context_message": context_message.name,
+		"party_doctype": context_message.party_doctype,
+		"party": context_message.party,
+	})
 
+	if (
+		context_message.reference_doctype
+		and context_message.reference_name
+		and frappe.db.exists(context_message.reference_doctype, context_message.reference_name)
+	):
 		incoming_message.update({
-			"context_message": context_message.name,
-			"party_doctype": context_message.party_doctype,
-			"party": context_message.party,
+			"reference_doctype": context_message.reference_doctype,
+			"reference_name": context_message.reference_name,
 		})
 
-		if (
-			context_message.reference_doctype
-			and context_message.reference_name
-			and frappe.db.exists(context_message.reference_doctype, context_message.reference_name)
-		):
-			incoming_message.update({
-				"reference_doctype": context_message.reference_doctype,
-				"reference_name": context_message.reference_name,
-			})
-
-		incoming_message.communication = WhatsAppMessage.create_incoming_communication(
-			from_=args.From,
-			to=args.To,
-			message=args.Body,
-			reference_doctype=incoming_message.reference_doctype,
-			reference_name=incoming_message.reference_name,
-			party_doctype=incoming_message.party_doctype,
-			party=incoming_message.party,
-			profile_name=args.ProfileName,
-			in_reply_to=context_message.communication,
-		)
+	incoming_message.communication = WhatsAppMessage.create_incoming_communication(
+		from_=args.From,
+		to=args.To,
+		message=args.Body,
+		reference_doctype=incoming_message.reference_doctype,
+		reference_name=incoming_message.reference_name,
+		party_doctype=incoming_message.party_doctype,
+		party=incoming_message.party,
+		profile_name=args.ProfileName,
+		in_reply_to=context_message.communication,
+	)
 
 	incoming_message.insert(ignore_permissions=True)
 
-	return frappe._dict({
-		"reply_message": None,
-		"disable_default_reply": False,
-	})
+	return out
 
 
 def on_doctype_update():
