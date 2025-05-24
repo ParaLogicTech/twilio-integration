@@ -9,7 +9,7 @@ from frappe.utils import get_site_url, convert_utc_to_system_timezone, time_diff
 from ...twilio_handler import Twilio
 from rq.timeouts import JobTimeoutException
 from requests.exceptions import ConnectionError, Timeout
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from datetime import timedelta
 import json
 
@@ -78,6 +78,10 @@ class WhatsAppMessage(Document):
 			file.content = print_format_file["fcontent"]
 			file.insert(ignore_permissions=True)
 			fid = file.name
+
+		# not needed becuase twilio downloads the file before sending message and callback
+		# if self.communication:
+		# 	frappe.get_doc("Communication", self.communication).notify_change("update")
 
 		updated_attachment = {"fid": fid}
 		self.db_set("attachment", json.dumps(updated_attachment), commit=auto_commit)
@@ -221,6 +225,7 @@ class WhatsAppMessage(Document):
 		party=None,
 		profile_name=None,
 		in_reply_to=None,
+		attachment=None,
 	):
 		if not reference_doctype or not reference_name:
 			return
@@ -253,6 +258,7 @@ class WhatsAppMessage(Document):
 			"sender_full_name": sender_name,
 			"phone_no": from_number,
 			"in_reply_to": in_reply_to,
+			"has_attachment": 1 if attachment else 0,
 		})
 
 		if party_doctype and party:
@@ -283,7 +289,7 @@ class WhatsAppMessage(Document):
 	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
 
-		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else None
+		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
 
 		wa_msg = frappe.new_doc("WhatsApp Message")
 		wa_msg.update({
@@ -300,7 +306,7 @@ class WhatsAppMessage(Document):
 			'attachment': json.dumps(attachment) if attachment else None,
 			'communication': communication,
 			'notification_type': notification_type,
-			'template_sid': template.template_sid if template else None,
+			'template_sid': template.template_sid or None,
 			'status': 'Not Sent',
 			'retry': 0,
 		})
@@ -316,6 +322,47 @@ class WhatsAppMessage(Document):
 			wa_msg.db_set("content_variables", json.dumps(content_variables))
 
 		return wa_msg
+
+	def download_incoming_attachment(self, auto_commit=False):
+		import mimetypes
+		import os
+
+		if self.sent_received != "Received":
+			return
+
+		attachment = self.get_attachment()
+		if not attachment or not attachment.get("media_url") or attachment.get("fid"):
+			return
+
+		media_url = attachment.get("media_url")
+		mime_type = attachment.get("mime_type")
+
+		file_extension = mimetypes.guess_extension(mime_type)
+		media_sid = os.path.basename(urlparse(media_url).path)
+		filename = '{sid}{ext}'.format(sid=media_sid, ext=file_extension)
+
+		response = Twilio.download_media_request(media_url)
+
+		file_data = frappe._dict(file_name=filename, is_private=1)
+		if self.communication:
+			file_data.attached_to_doctype = "Communication"
+			file_data.attached_to_name = self.communication
+		else:
+			file_data.attached_to_doctype = self.doctype
+			file_data.attached_to_name = self.name
+
+		file = frappe.new_doc("File", **file_data)
+		file.content = response.content
+		file.insert(ignore_permissions=True)
+
+		fid = file.name
+
+		if self.communication:
+			frappe.get_doc("Communication", self.communication).notify_change("update")
+
+		updated_attachment = attachment.copy()
+		updated_attachment["fid"] = fid
+		self.db_set("attachment", json.dumps(updated_attachment), commit=auto_commit)
 
 	@classmethod
 	def get_last_delivered_message(cls, to, from_, window_hours=None):
@@ -567,6 +614,11 @@ def incoming_message_callback(args):
 			"reference_name": context_message.reference_name,
 		})
 
+	attachment = None
+	if args.MediaUrl0:
+		attachment = {"media_url": args.MediaUrl0, "mime_type": args.MediaContentType0}
+		incoming_message.attachment = json.dumps(attachment)
+
 	incoming_message.communication = WhatsAppMessage.create_incoming_communication(
 		from_=args.From,
 		to=args.To,
@@ -577,9 +629,16 @@ def incoming_message_callback(args):
 		party=incoming_message.party,
 		profile_name=args.ProfileName,
 		in_reply_to=context_message.communication,
+		attachment=attachment,
 	)
 
 	incoming_message.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	try:
+		incoming_message.download_incoming_attachment(auto_commit=True)
+	except Exception:
+		frappe.db.rollback()
 
 	return out
 

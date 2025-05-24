@@ -9,6 +9,8 @@ from frappe import _
 from frappe.utils.password import get_decrypted_password
 from .utils import get_public_url, merge_dicts
 from functools import wraps
+import requests
+import base64
 
 
 class Twilio:
@@ -124,6 +126,25 @@ class Twilio:
 		template = client.content.v1.contents(template_sid).fetch()
 
 		return template
+
+	@classmethod
+	def download_media_request(cls, media_url):
+		settings = frappe.get_doc("Twilio Settings")
+		if not settings.enabled:
+			frappe.throw(_("Twilio is not enabled"))
+
+		auth_token = get_decrypted_password("Twilio Settings", "Twilio Settings", 'auth_token')
+
+		credentials = f"{settings.account_sid}:{auth_token}"
+		encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+		headers = {
+			'Authorization': f'Basic {encoded_credentials}'
+		}
+
+		response = requests.get(media_url, headers=headers)
+		response.raise_for_status()
+
+		return response
 
 
 class IncomingCall:

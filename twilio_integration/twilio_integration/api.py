@@ -173,6 +173,9 @@ def download_whatsapp_media(**kwargs):
 		frappe.throw(_("Message ID missing"), exc=frappe.ValidationError)
 
 	message_doc = frappe.get_doc("WhatsApp Message", message_name)
+	if message_doc.sent_received != "Sent":
+		raise frappe.PermissionError
+
 	attachment = message_doc.get_attachment(store_print_attachment=True)
 	if not attachment:
 		raise frappe.DoesNotExistError
