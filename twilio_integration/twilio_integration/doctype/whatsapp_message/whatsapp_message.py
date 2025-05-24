@@ -7,8 +7,6 @@ from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
 from frappe.utils import get_site_url, convert_utc_to_system_timezone, time_diff, now_datetime, cint, flt
 from ...twilio_handler import Twilio
-from rq.timeouts import JobTimeoutException
-from requests.exceptions import ConnectionError, Timeout
 from urllib.parse import quote, urlparse
 from datetime import timedelta
 import json
@@ -323,47 +321,6 @@ class WhatsAppMessage(Document):
 
 		return wa_msg
 
-	def download_incoming_attachment(self, auto_commit=False):
-		import mimetypes
-		import os
-
-		if self.sent_received != "Received":
-			return
-
-		attachment = self.get_attachment()
-		if not attachment or not attachment.get("media_url") or attachment.get("fid"):
-			return
-
-		media_url = attachment.get("media_url")
-		mime_type = attachment.get("mime_type")
-
-		file_extension = mimetypes.guess_extension(mime_type)
-		media_sid = os.path.basename(urlparse(media_url).path)
-		filename = '{sid}{ext}'.format(sid=media_sid, ext=file_extension)
-
-		response = Twilio.download_media_request(media_url)
-
-		file_data = frappe._dict(file_name=filename, is_private=1)
-		if self.communication:
-			file_data.attached_to_doctype = "Communication"
-			file_data.attached_to_name = self.communication
-		else:
-			file_data.attached_to_doctype = self.doctype
-			file_data.attached_to_name = self.name
-
-		file = frappe.new_doc("File", **file_data)
-		file.content = response.content
-		file.insert(ignore_permissions=True)
-
-		fid = file.name
-
-		if self.communication:
-			frappe.get_doc("Communication", self.communication).notify_change("update")
-
-		updated_attachment = attachment.copy()
-		updated_attachment["fid"] = fid
-		self.db_set("attachment", json.dumps(updated_attachment), commit=auto_commit)
-
 	@classmethod
 	def get_last_delivered_message(cls, to, from_, window_hours=None):
 		message = frappe.db.get_value("WhatsApp Message", {
@@ -444,7 +401,7 @@ def is_whatsapp_enabled():
 	return True if frappe.get_cached_value("Twilio Settings", None, 'enabled') else False
 
 
-def flush_whatsapp_message_queue(from_test=False):
+def flush_outgoing_message_queue(from_test=False):
 	"""Flush queued WhatsApp Messages, called from scheduler"""
 	auto_commit = not from_test
 
@@ -452,7 +409,7 @@ def flush_whatsapp_message_queue(from_test=False):
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
 
-	for message_name in get_queued_whatsapp_messages():
+	for message_name in get_queued_outgoing_messages():
 		send_whatsapp_message(message_name, auto_commit=auto_commit)
 
 
@@ -502,20 +459,153 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 			notification_type=message_doc.notification_type
 		)
 
-	except (ConnectionError, Timeout, JobTimeoutException):
-		handle_timeout(message_doc, auto_commit)
+	except Exception as e:
+		if auto_commit:
+			frappe.db.rollback()
+
+		if message_doc.retry < 3:
+			message_doc.db_set({
+				"status": "Not Sent",
+				"retry": message_doc.retry + 1,
+				"error": str(e),
+			}, commit=auto_commit)
+		else:
+			message_doc.db_set({
+				"status": "Error",
+				"error": str(e),
+			}, commit=auto_commit)
+
+		if message_doc.communication:
+			frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
+
+		if now:
+			print(frappe.get_traceback())
+			raise e
+		else:
+			frappe.log_error(
+				title=_("Failed to send WhatsApp Message"),
+				message=str(e),
+				reference_doctype="WhatsApp Message",
+				reference_name=message_doc.name
+			)
+
+
+def flush_incoming_media_queue(from_test=False):
+	"""Flush queued WhatsApp Messages, called from scheduler"""
+	auto_commit = not from_test
+
+	if are_whatsapp_messages_muted():
+		frappe.msgprint(_("WhatsApp messages are muted"))
+		return
+
+	for message_name in get_queued_incoming_media_messages():
+		download_incoming_media(message_name, auto_commit=auto_commit)
+
+
+def download_incoming_media(message_name, auto_commit=True, now=False):
+	import mimetypes
+	import os
+
+	if are_whatsapp_messages_muted():
+		frappe.msgprint(_("WhatsApp messages are muted"))
+		return
+
+	message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
+
+	if message_doc.incoming_media_status != "To Download" or message_doc.sent_received != "Received":
+		if auto_commit:
+			frappe.db.rollback()
+		return
+
+	attachment = message_doc.get_attachment()
+	if not attachment or not attachment.get("media_url") or attachment.get("fid"):
+		message_doc.db_set({
+			"incoming_media_status": "Attached" if attachment and attachment.get("fid") else None
+		}, commit=auto_commit)
+		return
+
+	message_doc.db_set("incoming_media_status", "Downloading", commit=auto_commit)
+
+	try:
+		media_url = attachment.get("media_url")
+		mime_type = attachment.get("mime_type")
+
+		file_extension = mimetypes.guess_extension(mime_type)
+		media_sid = os.path.basename(urlparse(media_url).path)
+		filename = '{sid}{ext}'.format(sid=media_sid, ext=file_extension)
+
+		response = Twilio.download_media_request(media_url)
+
+		file_data = frappe._dict(file_name=filename, is_private=1)
+		if message_doc.communication:
+			file_data.attached_to_doctype = "Communication"
+			file_data.attached_to_name = message_doc.communication
+		else:
+			file_data.attached_to_doctype = message_doc.doctype
+			file_data.attached_to_name = message_doc.name
+
+		file = frappe.new_doc("File", **file_data)
+		file.content = response.content
+		file.insert(ignore_permissions=True)
+
+		fid = file.name
+
+		if message_doc.communication:
+			frappe.get_doc("Communication", message_doc.communication).notify_change("update")
+
+		updated_attachment = attachment.copy()
+		updated_attachment["fid"] = fid
+		message_doc.db_set({
+			"incoming_media_status": "Attached",
+			"attachment": json.dumps(updated_attachment),
+			"error": None,
+		}, commit=auto_commit)
 
 	except Exception as e:
-		handle_error(e, message_doc, auto_commit, now)
+		if auto_commit:
+			frappe.db.rollback()
+
+		if message_doc.retry < 3:
+			message_doc.db_set({
+				"incoming_media_status": "To Download",
+				"retry": message_doc.retry + 1,
+				"error": str(e),
+			}, commit=auto_commit)
+		else:
+			message_doc.db_set({
+				"incoming_media_status": "Error",
+				"error": str(e),
+			}, commit=auto_commit)
+
+		if now:
+			print(frappe.get_traceback())
+			raise e
+		else:
+			frappe.log_error(
+				title=_("Failed to download incoming WhatsApp media"),
+				message=str(e),
+				reference_doctype="WhatsApp Message",
+				reference_name=message_doc.name
+			)
 
 
-def get_queued_whatsapp_messages():
+def get_queued_outgoing_messages():
 	return frappe.db.sql_list("""
 		select name
 		from `tabWhatsApp Message`
 		where status = 'Not Sent' and sent_received = 'Sent'
 		order by priority desc, creation asc
 		limit 500
+	""")
+
+
+def get_queued_incoming_media_messages():
+	return frappe.db.sql_list("""
+		select name
+		from `tabWhatsApp Message`
+		where incoming_media_status = 'To Download' and sent_received = 'Received'
+		order by priority desc, creation asc
+		limit 100
 	""")
 
 
@@ -526,43 +616,6 @@ def expire_whatsapp_message_queue():
 		SET status = 'Expired'
 		WHERE modified < (NOW() - INTERVAL '7' DAY) AND status = 'Not Sent'
 	""")
-
-
-def handle_timeout(message_doc, auto_commit):
-	message_doc.db_set("status", "Not Sent", commit=auto_commit)
-	if message_doc.communication:
-		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
-
-
-def handle_error(e, message_doc, auto_commit, now):
-	if auto_commit:
-		frappe.db.rollback()
-
-	if message_doc.retry < 3:
-		message_doc.db_set({
-			"status": "Not Sent",
-			"retry": message_doc.retry + 1,
-			"error": str(e),
-		}, commit=auto_commit)
-	else:
-		message_doc.db_set({
-			"status": "Error",
-			"error": str(e),
-		}, commit=auto_commit)
-
-	if message_doc.communication:
-		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
-
-	if now:
-		print(frappe.get_traceback())
-		raise e
-	else:
-		frappe.log_error(
-			title=_("Failed to send WhatsApp Message"),
-			message=str(e),
-			reference_doctype="WhatsApp Message",
-			reference_name=message_doc.name
-		)
 
 
 def incoming_message_callback(args):
@@ -618,6 +671,9 @@ def incoming_message_callback(args):
 	if args.MediaUrl0:
 		attachment = {"media_url": args.MediaUrl0, "mime_type": args.MediaContentType0}
 		incoming_message.attachment = json.dumps(attachment)
+		incoming_message.incoming_media_status = "To Download"
+	else:
+		incoming_message.incoming_media_status = None
 
 	incoming_message.communication = WhatsAppMessage.create_incoming_communication(
 		from_=args.From,
@@ -633,16 +689,19 @@ def incoming_message_callback(args):
 	)
 
 	incoming_message.insert(ignore_permissions=True)
-	frappe.db.commit()
 
-	try:
-		incoming_message.download_incoming_attachment(auto_commit=True)
-	except Exception:
-		frappe.db.rollback()
+	if incoming_message.incoming_media_status == "To Download":
+		frappe.enqueue(
+			"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.download_incoming_media",
+			message_name=incoming_message.name,
+			enqueue_after_commit=True,
+			queue="long",
+		)
 
 	return out
 
 
 def on_doctype_update():
 	frappe.db.add_index('WhatsApp Message', ('status', 'priority', 'creation'), 'index_bulk_flush')
+	frappe.db.add_index('WhatsApp Message', ('incoming_media_status', 'priority', 'creation'), 'index_incoming_media')
 	frappe.db.add_index('WhatsApp Message', ('`to`', 'status', 'date_sent'), 'index_last_delivered')

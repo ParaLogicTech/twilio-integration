@@ -36,6 +36,7 @@
   "communication",
   "context_message",
   "media_section",
+  "incoming_media_status",
   "attachment"
  ],
  "fields": [
@@ -242,13 +243,20 @@
    "no_copy": 1,
    "options": "WhatsApp Message",
    "read_only": 1
+  },
+  {
+   "fieldname": "incoming_media_status",
+   "fieldtype": "Select",
+   "label": "Incoming Media Status",
+   "options": "\nTo Download\nDownloading\nAttached\nError",
+   "read_only": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-23 16:21:26.328152",
+ "modified": "2025-05-24 14:33:36.228249",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",

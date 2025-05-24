@@ -141,6 +141,7 @@ def incoming_whatsapp_message_handler(**kwargs):
 	args = frappe._dict(kwargs)
 
 	response = incoming_message_callback(args)
+	frappe.db.commit()
 
 	reply_message = response.get("reply_message")
 	disable_default_reply = response.get("disable_default_reply")
