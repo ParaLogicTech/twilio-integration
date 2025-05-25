@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:handler_name",
+ "creation": "2025-05-24 18:12:57.301149",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "handler_name",
+  "section_break_remf",
+  "expiry_indirect_reply",
+  "allow_indirect_reply",
+  "column_break_gxxe",
+  "download_media_before_handling",
+  "actions_section",
+  "actions",
+  "error_handling_section",
+  "error_reply_message"
+ ],
+ "fields": [
+  {
+   "fieldname": "handler_name",
+   "fieldtype": "Data",
+   "label": "Handler Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "section_break_remf",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_gxxe",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "allow_indirect_reply",
+   "fieldname": "expiry_indirect_reply",
+   "fieldtype": "Duration",
+   "in_list_view": 1,
+   "label": "Expiry for Indirect Reply",
+   "mandatory_depends_on": "allow_indirect_reply"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_indirect_reply",
+   "fieldtype": "Check",
+   "label": "Allow Indirect Reply"
+  },
+  {
+   "fieldname": "error_reply_message",
+   "fieldtype": "Small Text",
+   "label": "Reply Message on Error"
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "error_reply_message",
+   "fieldname": "error_handling_section",
+   "fieldtype": "Section Break",
+   "label": "Error Handling"
+  },
+  {
+   "fieldname": "actions_section",
+   "fieldtype": "Section Break",
+   "label": "Actions"
+  },
+  {
+   "fieldname": "actions",
+   "fieldtype": "Table",
+   "label": "Actions",
+   "options": "WhatsApp Reply Action"
+  },
+  {
+   "default": "0",
+   "fieldname": "download_media_before_handling",
+   "fieldtype": "Check",
+   "label": "Download Media Before Handling"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-05-26 02:00:40.000386",
+ "modified_by": "Administrator",
+ "module": "Twilio Integration",
+ "name": "WhatsApp Reply Handler",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -99,6 +99,7 @@ class NotificationTwilio(Notification):
 			party_doctype=timeline_doctype,
 			party=timeline_name,
 			whatsapp_message_template=whatsapp_message_template,
+			whatsapp_reply_handler=self.whatsapp_reply_handler,
 			content_variables=content_variables or None,
 			automated=True,
 			attachment=attachments[0] if attachments else None,

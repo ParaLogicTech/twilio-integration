@@ -33,8 +33,10 @@
   "party_doctype",
   "party",
   "column_break_nkwx",
-  "communication",
+  "reply_handler",
+  "reply_handler_expired",
   "context_message",
+  "communication",
   "media_section",
   "incoming_media_status",
   "attachment"
@@ -59,6 +61,7 @@
   {
    "fieldname": "message",
    "fieldtype": "Text",
+   "in_list_view": 1,
    "label": "Message",
    "read_only": 1
   },
@@ -250,13 +253,29 @@
    "label": "Incoming Media Status",
    "options": "\nTo Download\nDownloading\nAttached\nError",
    "read_only": 1
+  },
+  {
+   "fieldname": "reply_handler",
+   "fieldtype": "Link",
+   "label": "Reply Handler",
+   "no_copy": 1,
+   "options": "WhatsApp Reply Handler",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "reply_handler_expired",
+   "fieldtype": "Check",
+   "label": "Reply Handler Expired",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2025-05-24 14:33:36.228249",
+ "modified": "2025-05-26 01:44:11.998936",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
@@ -275,7 +294,7 @@
    "share": 1
   }
  ],
- "sort_field": "modified",
+ "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],
  "title_field": "reference_name",

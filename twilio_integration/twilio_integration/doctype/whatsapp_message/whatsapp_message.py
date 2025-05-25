@@ -106,6 +106,7 @@ class WhatsAppMessage(Document):
 		party_doctype=None,
 		party=None,
 		whatsapp_message_template=None,
+		whatsapp_reply_handler=None,
 		content_variables=None,
 		attachment=None,
 		automated=False,
@@ -150,6 +151,7 @@ class WhatsAppMessage(Document):
 				communication=communication,
 				attachment=attachment,
 				whatsapp_message_template=whatsapp_message_template,
+				whatsapp_reply_handler=whatsapp_reply_handler,
 				content_variables=content_variables,
 				notification_type=notification_type,
 			)
@@ -282,12 +284,14 @@ class WhatsAppMessage(Document):
 		communication=None,
 		attachment=None,
 		whatsapp_message_template=None,
+		whatsapp_reply_handler=None,
 		content_variables=None,
 		notification_type=None,
 	):
 		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
 
 		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
+		reply_handler = template.reply_handler if template else whatsapp_reply_handler
 
 		wa_msg = frappe.new_doc("WhatsApp Message")
 		wa_msg.update({
@@ -305,6 +309,7 @@ class WhatsAppMessage(Document):
 			'communication': communication,
 			'notification_type': notification_type,
 			'template_sid': template.template_sid or None,
+			'reply_handler': reply_handler or None,
 			'status': 'Not Sent',
 			'retry': 0,
 		})
@@ -322,22 +327,35 @@ class WhatsAppMessage(Document):
 		return wa_msg
 
 	@classmethod
-	def get_last_delivered_message(cls, to, from_, window_hours=None):
-		message = frappe.db.get_value("WhatsApp Message", {
+	def get_last_indirect_reply_message(cls, to, from_):
+		message = frappe.db.sql("""
+			select m.name, m.date_sent, m.reply_handler, h.expiry_indirect_reply, m.reply_handler_expired
+			from `tabWhatsApp Message` m
+			inner join `tabWhatsApp Reply Handler` h on h.name = m.reply_handler
+			where m.`to` = %(to)s
+				and m.from_ = %(from)s
+				and m.sent_received = 'Sent'
+				and m.status in ('Delivered', 'Read')
+				and m.date_sent is not null
+				and h.allow_indirect_reply = 1
+			order by date_sent desc
+			limit 1
+		""", {
 			"to": to,
-			"from_": from_,
-			"sent_received": "Sent",
-			"status": ('in', ('Delivered', 'Read')),
-			"date_sent": ('is', 'set'),
-		}, fieldname=["name", "date_sent"], order_by="date_sent desc", as_dict=True)
+			"from": from_,
+		}, as_dict=True)
 
+		message = message[0] if message else None
 		if not message:
 			return None
 
-		window_hours = flt(window_hours)
-		if window_hours > 0:
+		if message.reply_handler_expired:
+			return None
+
+		window_seconds = cint(message.expiry_indirect_reply)
+		if window_seconds > 0:
 			now = now_datetime()
-			window_timedelta = timedelta(hours=window_hours)
+			window_timedelta = timedelta(seconds=window_seconds)
 			diff = time_diff(now, message.date_sent)
 			if diff > window_timedelta:
 				return None
@@ -479,7 +497,6 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 			frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=auto_commit)
 
 		if now:
-			print(frappe.get_traceback())
 			raise e
 		else:
 			frappe.log_error(
@@ -510,7 +527,10 @@ def download_incoming_media(message_name, auto_commit=True, now=False):
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
 
-	message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
+	if isinstance(message_name, Document):
+		message_doc = message_name
+	else:
+		message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
 
 	if message_doc.incoming_media_status != "To Download" or message_doc.sent_received != "Received":
 		if auto_commit:
@@ -578,7 +598,6 @@ def download_incoming_media(message_name, auto_commit=True, now=False):
 			}, commit=auto_commit)
 
 		if now:
-			print(frappe.get_traceback())
 			raise e
 		else:
 			frappe.log_error(
@@ -631,13 +650,20 @@ def incoming_message_callback(args):
 			args.OriginalRepliedMessageSender
 		)
 	else:
-		context_message_name = WhatsAppMessage.get_last_delivered_message(args.From, args.To, window_hours=24)
+		context_message_name = WhatsAppMessage.get_last_indirect_reply_message(args.From, args.To)
 
+	# Do not receive message if there is no context
 	if not context_message_name:
 		return out
 
-	incoming_message = frappe.new_doc("WhatsApp Message")
+	context_message = frappe.get_doc("WhatsApp Message", context_message_name)
 
+	if context_message.reply_handler:
+		reply_handler = frappe.get_cached_doc("WhatsApp Reply Handler", context_message.reply_handler)
+	else:
+		reply_handler = frappe._dict()
+
+	incoming_message = frappe.new_doc("WhatsApp Message")
 	incoming_message.update({
 		"from_": args.From,
 		"to": args.To,
@@ -646,12 +672,9 @@ def incoming_message_callback(args):
 		"sent_received": "Received",
 		"id": args.MessageSid,
 		"date_sent": frappe.utils.now(),
-		"status": "Received"
-	})
+		"status": "Received",
 
-	context_message = frappe.get_doc("WhatsApp Message", context_message_name)
-
-	incoming_message.update({
+		"reply_handler": reply_handler.name,
 		"context_message": context_message.name,
 		"party_doctype": context_message.party_doctype,
 		"party": context_message.party,
@@ -667,14 +690,15 @@ def incoming_message_callback(args):
 			"reference_name": context_message.reference_name,
 		})
 
+	# Store media details
 	attachment = None
+	incoming_message.incoming_media_status = None
 	if args.MediaUrl0:
 		attachment = {"media_url": args.MediaUrl0, "mime_type": args.MediaContentType0}
 		incoming_message.attachment = json.dumps(attachment)
 		incoming_message.incoming_media_status = "To Download"
-	else:
-		incoming_message.incoming_media_status = None
 
+	# Create Communication
 	incoming_message.communication = WhatsAppMessage.create_incoming_communication(
 		from_=args.From,
 		to=args.To,
@@ -690,13 +714,38 @@ def incoming_message_callback(args):
 
 	incoming_message.insert(ignore_permissions=True)
 
-	if incoming_message.incoming_media_status == "To Download":
+	frappe.db.commit()
+
+	# Download attachment
+	if reply_handler and reply_handler.download_media_before_handling:
+		download_incoming_media(incoming_message)
+	elif incoming_message.incoming_media_status == "To Download":
 		frappe.enqueue(
 			"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.download_incoming_media",
 			message_name=incoming_message.name,
-			enqueue_after_commit=True,
+			enqueue_after_commit=False,
 			queue="long",
 		)
+
+	# Handle reply
+	if reply_handler and not context_message.reply_handler_expired:
+		out.disable_default_reply = True
+
+		original_user = frappe.session.user
+
+		try:
+			frappe.set_user("Administrator")
+			reply_message = reply_handler.handle_incoming_message(incoming_message, context_message)
+			if reply_message:
+				out.reply_message = reply_message
+
+			frappe.db.commit()
+		except Exception:
+			frappe.db.rollback()
+			reply_handler.log_error(title="Error handling WhatsApp Message Reply", message=frappe.get_traceback())
+			out.reply_message = reply_handler.error_reply_message
+		finally:
+			frappe.set_user(original_user)
 
 	return out
 
@@ -704,4 +753,4 @@ def incoming_message_callback(args):
 def on_doctype_update():
 	frappe.db.add_index('WhatsApp Message', ('status', 'priority', 'creation'), 'index_bulk_flush')
 	frappe.db.add_index('WhatsApp Message', ('incoming_media_status', 'priority', 'creation'), 'index_incoming_media')
-	frappe.db.add_index('WhatsApp Message', ('`to`', 'status', 'date_sent'), 'index_last_delivered')
+	frappe.db.add_index('WhatsApp Message', ('`to`', 'status', 'date_sent'), 'index_indirect_reply')

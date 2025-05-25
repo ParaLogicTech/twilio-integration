@@ -2,6 +2,7 @@ from werkzeug.wrappers import Response
 
 import frappe
 from frappe import _
+from frappe.utils import cstr
 from frappe.contacts.doctype.contact.contact import get_contact_with_phone_number
 from .twilio_handler import Twilio, IncomingCall, TwilioCallDetails, validate_twilio_request
 from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import (
@@ -141,9 +142,11 @@ def incoming_whatsapp_message_handler(**kwargs):
 	args = frappe._dict(kwargs)
 
 	response = incoming_message_callback(args)
-	frappe.db.commit()
 
-	reply_message = response.get("reply_message")
+	reply_message = None
+	if cstr(response.get("reply_message")).strip():
+		reply_message = response.get("reply_message")
+
 	disable_default_reply = response.get("disable_default_reply")
 
 	# Default Auto Reply
@@ -162,6 +165,7 @@ def incoming_whatsapp_message_handler(**kwargs):
 def whatsapp_message_status_callback(**kwargs):
 	"""This is a webhook called by Twilio whenever sent WhatsApp message status is changed.
 	"""
+	frappe.set_user("Administrator")
 	args = frappe._dict(kwargs)
 	outgoing_message_status_callback(args, auto_commit=True)
 

@@ -13,8 +13,10 @@ app_license = "MIT"
 boot_session = "twilio_integration.boot.boot_session"
 
 override_whitelisted_methods = {
+	"twilio.incoming_whatsapp_message_handler": "twilio_integration.twilio_integration.api.incoming_whatsapp_message_handler",
 	"twilio.whatsapp_media": "twilio_integration.twilio_integration.api.download_whatsapp_media",
 	"twilio.whatsapp_message_status_callback": "twilio_integration.twilio_integration.api.whatsapp_message_status_callback",
+	# "twilio.webhook_sink_handler": "twilio_integration.twilio_integration.api.whatsapp_message_status_callback",
 }
 
 website_redirects = [
@@ -42,6 +44,8 @@ fixtures = [
 				"Notification-sec_whatsapp_template",
 				"Notification-whatsapp_message_template",
 				"Notification-use_whatsapp_template",
+				"Notification-custom_column_break_nckpb",
+				"Notification-whatsapp_reply_handler",
 			]]
 		}
 	},

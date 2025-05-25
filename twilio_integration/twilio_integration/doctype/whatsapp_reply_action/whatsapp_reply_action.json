@@ -1,0 +1,62 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2025-05-24 18:28:57.033371",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "condition",
+  "action",
+  "reply_message",
+  "expire_reply_handler"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "condition",
+   "fieldtype": "Code",
+   "in_list_view": 1,
+   "label": "Condition",
+   "options": "Python"
+  },
+  {
+   "columns": 3,
+   "fieldname": "action",
+   "fieldtype": "Code",
+   "in_list_view": 1,
+   "label": "Action",
+   "options": "Python"
+  },
+  {
+   "columns": 3,
+   "fieldname": "reply_message",
+   "fieldtype": "Code",
+   "in_list_view": 1,
+   "label": "Reply Message",
+   "options": "Jinja"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "expire_reply_handler",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Expire Replies"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-05-26 01:31:50.716422",
+ "modified_by": "Administrator",
+ "module": "Twilio Integration",
+ "name": "WhatsApp Reply Action",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

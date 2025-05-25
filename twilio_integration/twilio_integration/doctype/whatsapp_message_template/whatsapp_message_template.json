@@ -11,15 +11,17 @@
   "column_break_4l5u",
   "media_variable",
   "media_variable_type",
+  "column_break_r7ey",
+  "reply_handler",
   "section_break_xvor",
   "template_body",
+  "section_break_fo6w",
   "parameters"
  ],
  "fields": [
   {
    "fieldname": "template_name",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Template Name",
    "reqd": 1,
    "unique": 1
@@ -51,11 +53,13 @@
   {
    "fieldname": "media_variable",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Media Variable"
   },
   {
    "fieldname": "section_break_xvor",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Message"
   },
   {
    "depends_on": "media_variable",
@@ -63,11 +67,26 @@
    "fieldtype": "Select",
    "label": "Media Variable Type",
    "options": "Path to File\nMessage ID"
+  },
+  {
+   "fieldname": "column_break_r7ey",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reply_handler",
+   "fieldtype": "Link",
+   "label": "Reply Handler",
+   "options": "WhatsApp Reply Handler"
+  },
+  {
+   "fieldname": "section_break_fo6w",
+   "fieldtype": "Section Break",
+   "label": "Variables"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-24 00:22:49.559892",
+ "modified": "2025-05-24 18:39:35.230662",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message Template",
