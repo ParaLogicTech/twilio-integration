@@ -754,3 +754,66 @@ def on_doctype_update():
 	frappe.db.add_index('WhatsApp Message', ('status', 'priority', 'creation'), 'index_bulk_flush')
 	frappe.db.add_index('WhatsApp Message', ('incoming_media_status', 'priority', 'creation'), 'index_incoming_media')
 	frappe.db.add_index('WhatsApp Message', ('`to`', 'status', 'date_sent'), 'index_indirect_reply')
+
+
+def reconcile_one_message_delivery_status(message_doc,auto_commit=True):
+	"""
+	This method Reconciles delivery status for a single message with status 'Sent' or 'Queued'
+	"""
+	if are_whatsapp_messages_muted():
+		frappe.msgprint(_("WhatsApp messages are muted"))
+		return
+
+	if message_doc.status not in ('Sent', 'Queued'):
+		return
+
+	original_message_status = message_doc.status
+	new_message_status = Twilio.get_message_status(message_doc.id)
+
+	if not new_message_status or (new_message_status == original_message_status):
+		return
+
+	message_doc.db_set("status", new_message_status, commit=False)
+
+	if message_doc.communication:
+		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=False)
+
+	if auto_commit:
+		frappe.db.commit()
+
+
+@frappe.whitelist()
+def reconcile_all_message_delivery_status(limit=100, auto_commit=True):
+	"""
+	Reconcile delivery status for all messages with status 'Sent' or 'Queued'
+	This method processes messages in batches with proper error handling
+	"""
+	if are_whatsapp_messages_muted():
+		frappe.msgprint(_("WhatsApp messages are muted"))
+		return
+
+	messages_to_reconcile = frappe.db.sql("""
+		SELECT name, id
+		FROM `tabWhatsApp Message`
+		WHERE status IN ('Sent', 'Queued')
+		AND sent_received = 'Sent'
+		AND id IS NOT NULL
+		ORDER BY creation DESC
+		LIMIT %s
+		""", (limit,), as_dict=True)
+
+	for msg_data in messages_to_reconcile:
+		try:
+			message_doc = frappe.get_doc("WhatsApp Message", msg_data.name, for_update=True)
+			reconcile_one_message_delivery_status(message_doc)
+
+		except Exception as e:
+			if auto_commit:
+				frappe.db.rollback()
+
+			frappe.log_error(
+				title=_("Error in delivery status reconciliation"),
+				message="Message: {0}\nMessage SID: {1}\nError: {2}".format(msg_data.name,msg_data.id,str(e)),
+				reference_doctype="WhatsApp Message",
+				reference_name=msg_data.name
+			)
