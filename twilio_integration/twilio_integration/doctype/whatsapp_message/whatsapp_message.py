@@ -370,7 +370,7 @@ class WhatsAppMessage(Document):
 			"sent_received": "Sent",
 		})
 
-	def update_message_delivery_status(cls):
+	def update_message_delivery_status(self):
 		"""
 		This method Reconciles delivery status for a single message with status 'Sent' or 'Queued'
 		"""
@@ -378,19 +378,19 @@ class WhatsAppMessage(Document):
 			frappe.msgprint(_("WhatsApp messages are muted"))
 			return
 
-		if cls.status not in ('Sent', 'Queued'):
+		if self.status not in ('Sent', 'Queued'):
 			return
 
-		original_message_status = cls.status
-		new_message_status = Twilio.get_message(cls.id).status.title()
+		original_message_status = self.status
+		new_message_status = Twilio.get_message(self.id).status.title()
 
 		if not new_message_status or (new_message_status == original_message_status):
 			return
 
-		cls.db_set("status", new_message_status, commit=False)
+		self.db_set("status", new_message_status, commit=False)
 
-		if cls.communication:
-			frappe.get_doc('Communication', cls.communication).set_delivery_status(commit=False)
+		if self.communication:
+			frappe.get_doc('Communication', self.communication).set_delivery_status(commit=False)
 
 def outgoing_message_status_callback(args, auto_commit=False):
 	message = frappe.db.get_value("WhatsApp Message", filters={
