@@ -387,10 +387,11 @@ class WhatsAppMessage(Document):
 		if not new_message_status or (new_message_status == original_message_status):
 			return
 
-		self.db_set("status", new_message_status, commit=False)
+		self.db_set("status", new_message_status)
 
 		if self.communication:
 			frappe.get_doc('Communication', self.communication).set_delivery_status(commit=False)
+
 
 def outgoing_message_status_callback(args, auto_commit=False):
 	message = frappe.db.get_value("WhatsApp Message", filters={
@@ -771,13 +772,7 @@ def incoming_message_callback(args):
 	return out
 
 
-def on_doctype_update():
-	frappe.db.add_index('WhatsApp Message', ('status', 'priority', 'creation'), 'index_bulk_flush')
-	frappe.db.add_index('WhatsApp Message', ('incoming_media_status', 'priority', 'creation'), 'index_incoming_media')
-	frappe.db.add_index('WhatsApp Message', ('`to`', 'status', 'date_sent'), 'index_indirect_reply')
-
-
-def reconcile_all_message_delivery_status(limit=100, auto_commit=True):
+def reconcile_message_delivery_status(limit=100, auto_commit=True):
 	"""
 	Reconcile delivery status for all messages with status 'Sent' or 'Queued'
 	This method processes messages in batches with proper error handling
@@ -786,11 +781,11 @@ def reconcile_all_message_delivery_status(limit=100, auto_commit=True):
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
 
-	messages_to_reconcile = get_pending_reconciliation_messages(limit)
+	messages_to_reconcile = get_pending_status_reconciliation_messages(limit)
 
-	for msg_data in messages_to_reconcile:
+	for name in messages_to_reconcile:
 		try:
-			message_doc = frappe.get_doc("WhatsApp Message", msg_data.name, for_update=True)
+			message_doc = frappe.get_doc("WhatsApp Message", name, for_update=True)
 			message_doc.update_message_delivery_status()
 
 			if auto_commit:
@@ -801,21 +796,29 @@ def reconcile_all_message_delivery_status(limit=100, auto_commit=True):
 				frappe.db.rollback()
 
 			frappe.log_error(
-				title=_("Error in WhatsApp Message Delivery Status Reconciliation"),
+				title=_("Error Reconciling WhatsApp Message Delivery Status"),
 				message=str(e),
+				reference_doctype="WhatsApp Message",
+				reference_name=name
 			)
 
 
-def get_pending_reconciliation_messages(limit):
+def get_pending_status_reconciliation_messages(limit):
 	"""
 	Fetch WhatsApp messages with status 'Sent' or 'Queued' and that haven't received delivery confirmation
 	"""
-	return frappe.db.sql("""
-		SELECT name, id
+	return frappe.db.sql_list("""
+		SELECT name
 		FROM `tabWhatsApp Message`
 		WHERE status IN ('Sent', 'Queued')
-		AND sent_received = 'Sent'
-		AND id IS NOT NULL
+			AND sent_received = 'Sent'
+			AND id IS NOT NULL
 		ORDER BY creation DESC
 		LIMIT %s
-		""", (limit,), as_dict=True)
+	""", (limit,), as_dict=True)
+
+
+def on_doctype_update():
+	frappe.db.add_index('WhatsApp Message', ('status', 'priority', 'creation'), 'index_bulk_flush')
+	frappe.db.add_index('WhatsApp Message', ('incoming_media_status', 'priority', 'creation'), 'index_incoming_media')
+	frappe.db.add_index('WhatsApp Message', ('`to`', 'status', 'date_sent'), 'index_indirect_reply')
