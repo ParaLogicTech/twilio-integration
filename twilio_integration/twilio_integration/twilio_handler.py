@@ -146,6 +146,14 @@ class Twilio:
 
 		return response
 
+	@classmethod
+	def get_message(cls, message_id):
+		"""
+		Fetch the current status for this message from Twilio API and returns it
+		"""
+		client = cls.get_twilio_client()
+		message = client.messages(message_id).fetch()
+		return message
 
 class IncomingCall:
 	def __init__(self, from_number, to_number, meta=None):
