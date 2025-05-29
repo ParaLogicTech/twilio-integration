@@ -370,6 +370,27 @@ class WhatsAppMessage(Document):
 			"sent_received": "Sent",
 		})
 
+	def update_message_delivery_status(cls):
+		"""
+		This method Reconciles delivery status for a single message with status 'Sent' or 'Queued'
+		"""
+		if are_whatsapp_messages_muted():
+			frappe.msgprint(_("WhatsApp messages are muted"))
+			return
+
+		if cls.status not in ('Sent', 'Queued'):
+			return
+
+		original_message_status = cls.status
+		new_message_status = Twilio.get_message(cls.id).status.title()
+
+		if not new_message_status or (new_message_status == original_message_status):
+			return
+
+		cls.db_set("status", new_message_status, commit=False)
+
+		if cls.communication:
+			frappe.get_doc('Communication', cls.communication).set_delivery_status(commit=False)
 
 def outgoing_message_status_callback(args, auto_commit=False):
 	message = frappe.db.get_value("WhatsApp Message", filters={
@@ -770,7 +791,7 @@ def reconcile_all_message_delivery_status(limit=100, auto_commit=True):
 	for msg_data in messages_to_reconcile:
 		try:
 			message_doc = frappe.get_doc("WhatsApp Message", msg_data.name, for_update=True)
-			reconcile_one_message_delivery_status(message_doc)
+			message_doc.update_message_delivery_status()
 
 			if auto_commit:
 				frappe.db.commit()
@@ -780,8 +801,8 @@ def reconcile_all_message_delivery_status(limit=100, auto_commit=True):
 				frappe.db.rollback()
 
 			frappe.log_error(
-				title=_("Error in delivery status reconciliation"),
-				message="Error: {0}".format(str(e)),
+				title=_("Error in WhatsApp Message Delivery Status Reconciliation"),
+				message=str(e),
 			)
 
 
@@ -798,26 +819,3 @@ def get_pending_reconciliation_messages(limit):
 		ORDER BY creation DESC
 		LIMIT %s
 		""", (limit,), as_dict=True)
-
-
-def reconcile_one_message_delivery_status(message_doc):
-	"""
-	This method Reconciles delivery status for a single message with status 'Sent' or 'Queued'
-	"""
-	if are_whatsapp_messages_muted():
-		frappe.msgprint(_("WhatsApp messages are muted"))
-		return
-
-	if message_doc.status not in ('Sent', 'Queued'):
-		return
-
-	original_message_status = message_doc.status
-	new_message_status = Twilio.get_message(message_doc.id).status.title()
-
-	if not new_message_status or (new_message_status == original_message_status):
-		return
-
-	message_doc.db_set("status", new_message_status, commit=False)
-
-	if message_doc.communication:
-		frappe.get_doc('Communication', message_doc.communication).set_delivery_status(commit=False)
