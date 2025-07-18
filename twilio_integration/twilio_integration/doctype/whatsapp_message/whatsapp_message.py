@@ -5,39 +5,18 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
-from frappe.utils import get_site_url, convert_utc_to_system_timezone, time_diff, now_datetime, cint, flt
+from frappe.utils import get_site_url, convert_utc_to_system_timezone, time_diff, now_datetime, cint
 from ...twilio_handler import Twilio
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urljoin
 from datetime import timedelta
 import json
+import requests
 
 
 class WhatsAppMessage(Document):
 	def on_trash(self):
 		if frappe.session.user != 'Administrator':
 			frappe.throw(_('Only Administrator can delete WhatsApp Message'))
-
-	def get_message_dict(self):
-		site_url = get_site_url(frappe.local.site)
-
-		args = {
-			"from_": self.from_,
-			"to": self.to,
-			"status_callback": f"{site_url}/api/method/twilio.whatsapp_message_status_callback"
-		}
-
-		if self.template_sid:
-			args['content_sid'] = self.template_sid
-			if self.content_variables:
-				args['content_variables'] = self.content_variables
-		else:
-			args['body'] = self.message
-
-		attachment = self.get_attachment()
-		if attachment:
-			args['media_url'] = [f"{site_url}/api/method/twilio.whatsapp_media?id={quote(self.name)}"]
-
-		return args
 
 	def get_attachment(self, store_print_attachment=False):
 		attachment = None
@@ -288,7 +267,7 @@ class WhatsAppMessage(Document):
 		content_variables=None,
 		notification_type=None,
 	):
-		sender = frappe.db.get_single_value('Twilio Settings', 'whatsapp_no')
+		sender = frappe.db.get_single_value('WhatsApp Settings', 'whatsapp_no')
 
 		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
 		reply_handler = template.reply_handler if template else whatsapp_reply_handler
@@ -322,9 +301,105 @@ class WhatsAppMessage(Document):
 				content_variables[template.media_variable] = f"api/method/twilio.whatsapp_media?id={quote(wa_msg.name)}"
 
 		if content_variables:
-			wa_msg.db_set("content_variables", json.dumps(content_variables))
+			wa_msg.db_set("content_variables", json.dumps(content_variables, sort_keys=False))
 
 		return wa_msg
+
+	def send_whatsapp_via_twilio(self):
+		client = Twilio.get_twilio_client()
+		message_dict = self.get_twilio_message_dict()
+		response = client.messages.create(**message_dict)
+
+		date_sent = response.date_sent or response.date_created
+		if date_sent:
+			date_sent = convert_utc_to_system_timezone(date_sent).replace(tzinfo=None)
+
+		return frappe._dict({
+			"id": response.sid,
+			"status": response.status.title(),
+			"date_sent": date_sent,
+		})
+
+	def get_twilio_message_dict(self):
+		site_url = get_site_url(frappe.local.site)
+
+		args = {
+			"from_": self.from_,
+			"to": self.to,
+			"status_callback": f"{site_url}/api/method/twilio.whatsapp_message_status_callback"
+		}
+
+		if self.template_sid:
+			args['content_sid'] = self.template_sid
+			if self.content_variables:
+				args['content_variables'] = self.content_variables
+		else:
+			args['body'] = self.message
+
+		attachment = self.get_attachment()
+		if attachment:
+			args['media_url'] = [f"{site_url}/api/method/twilio.whatsapp_media?id={quote(self.name)}"]
+
+		return args
+
+	def send_whatsapp_via_freshchat(self):
+		freshchat_settings = frappe.get_single("Freshchat Settings")
+
+		api_key = freshchat_settings.api_key
+		api_endpoint = urljoin(freshchat_settings.api_endpoint, "/v2/outbound-messages/whatsapp")
+		channel_id = freshchat_settings.channel_id
+		namespace = freshchat_settings.namespace
+		from_ = self.from_.replace("whatsapp:", "")
+		to = self.to.replace("whatsapp:", "")
+
+		headers = {
+			"Authorization": f"Bearer {api_key}",
+			"Content-Type": "application/json"
+		}
+
+		message_data = {
+			"message_type": "template",
+			"message_template": {
+				"storage": "conversation",
+				"template_name": self.template_sid,
+				"namespace": namespace,
+				"language": {
+					"policy": "deterministic",
+					"code": "en_US"
+				},
+			}
+		}
+
+		if self.content_variables:
+			params_list = []
+			content_variables = json.loads(self.content_variables)
+			for value in content_variables.values():
+				params_list.append({"data": value})
+
+			message_data["rich_template_data"] = {
+				"body": {
+					"params": params_list
+				}
+			}
+
+		payload = {
+			"channel_id": channel_id,
+			"from": {"phone_number": from_},
+			"to": [{"phone_number": to}],
+			"provider": "whatsapp",
+			"data": message_data,
+		}
+
+		response = requests.post(api_endpoint, headers=headers, json=payload)
+		response.raise_for_status()
+
+		response_data = response.json()
+
+		return frappe._dict({
+			"id": response_data.get("request_id"),
+			"status": "Queued",
+			"date_sent": frappe.utils.now(),
+		})
 
 	@classmethod
 	def get_last_indirect_reply_message(cls, to, from_):
@@ -438,7 +513,17 @@ def are_whatsapp_messages_muted():
 
 
 def is_whatsapp_enabled():
-	return True if frappe.get_cached_value("Twilio Settings", None, 'enabled') else False
+	whatsapp_no = frappe.get_cached_value("WhatsApp Settings", None, "whatsapp_no")
+	if not whatsapp_no:
+		return False
+
+	whatsapp_provider = frappe.get_cached_value("WhatsApp Settings", None, "whatsapp_provider")
+	if whatsapp_provider == "Twilio":
+		return True if frappe.get_cached_value("Twilio Settings", None, 'enabled') else False
+	elif whatsapp_provider == "Freshchat":
+		return True if frappe.get_cached_value("Freshchat Settings", None, 'enabled') else False
+	else:
+		return False
 
 
 def flush_outgoing_message_queue(from_test=False):
@@ -475,18 +560,18 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 		doc = get_doc_for_notification_triggers(message_doc.reference_doctype, message_doc.reference_name)
 		run_before_send_method(doc, notification_type=message_doc.notification_type)
 
-		client = Twilio.get_twilio_client()
-		message_dict = message_doc.get_message_dict()
-		response = client.messages.create(**message_dict)
-
-		date_sent = response.date_sent or response.date_created
-		if date_sent:
-			date_sent = convert_utc_to_system_timezone(date_sent).replace(tzinfo=None)
+		whatsapp_provider = frappe.db.get_single_value("WhatsApp Settings", "whatsapp_provider")
+		if whatsapp_provider == "Twilio":
+			result = message_doc.send_whatsapp_via_twilio()
+		elif whatsapp_provider == "Freshchat":
+			result = message_doc.send_whatsapp_via_freshchat()
+		else:
+			frappe.throw(_("Please configure WhatsApp Provider"))
 
 		message_doc.db_set({
-			"id": response.sid,
-			"status": response.status.title(),
-			"date_sent": date_sent,
+			"id": result.get("id"),
+			"status": result.get("status"),
+			"date_sent": result.get("date_sent"),
 			"error": None,
 		}, commit=auto_commit)
 

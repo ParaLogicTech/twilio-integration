@@ -19,11 +19,22 @@ class NotificationTwilio(Notification):
 
 	def validate_twilio_settings(self):
 		if self.enabled and self.channel == "WhatsApp":
-			twilio_settings = frappe.get_single("Twilio Settings")
-			if not twilio_settings.enabled:
-				frappe.throw(_("Twilio Settings must be enabled to send WhatsApp notifications."))
-			if not twilio_settings.whatsapp_no:
-				frappe.throw(_("Twilio WhatsApp Number is required in Twilio Settings."))
+			whatsapp_settings = frappe.get_single("WhatsApp Settings")
+			if not whatsapp_settings.whatsapp_no:
+				frappe.throw(_("WhatsApp Number is required in WhatsApp Settings"))
+			if whatsapp_settings.whatsapp_provider == "Twilio":
+				twilio_settings = frappe.get_single("Twilio Settings")
+				if not twilio_settings.enabled:
+					frappe.throw(_("Twilio Settings must be enabled to send WhatsApp notifications"))
+			elif whatsapp_settings.whatsapp_provider == "Freshchat":
+				freshchat_settings = frappe.get_single("Freshchat Settings")
+				if not freshchat_settings.enabled:
+					frappe.throw(_("Freshchat Settings must be enabled to send WhatsApp notifications"))
+			else:
+				frappe.throw(_("Please configure WhatsApp Provider"))
+
+			if whatsapp_settings.whatsapp_provider == "Freshchat" and not self.use_whatsapp_template:
+				frappe.throw(_("Freshchat does not allow non-template messages. Please select WhatsApp Message Template instead"))
 
 	def validate_whatsapp_template(self):
 		if self.use_whatsapp_template:

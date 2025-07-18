@@ -151,7 +151,7 @@ def incoming_whatsapp_message_handler(**kwargs):
 
 	# Default Auto Reply
 	if not reply_message and not disable_default_reply:
-		reply_message = frappe.db.get_single_value('Twilio Settings', 'reply_message')
+		reply_message = frappe.db.get_single_value('WhatsApp Settings', 'reply_message')
 
 	resp = MessagingResponse()
 	if reply_message:
