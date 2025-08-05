@@ -6,6 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils.password import get_decrypted_password
 from frappe.utils import get_site_url, convert_utc_to_system_timezone, time_diff, now_datetime, cint
+from frappe.utils.verified_command import get_signed_params, verify_request
 from ...twilio_handler import Twilio
 from urllib.parse import quote, urlparse, urljoin
 from datetime import timedelta
@@ -86,6 +87,7 @@ class WhatsAppMessage(Document):
 		party=None,
 		whatsapp_message_template=None,
 		whatsapp_reply_handler=None,
+		whatsapp_provider=None,
 		content_variables=None,
 		attachment=None,
 		automated=False,
@@ -94,7 +96,7 @@ class WhatsAppMessage(Document):
 	):
 		from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
 
-		if are_whatsapp_messages_muted():
+		if are_whatsapp_messages_muted(whatsapp_provider):
 			frappe.msgprint(_("WhatsApp is muted"))
 			return
 
@@ -131,6 +133,7 @@ class WhatsAppMessage(Document):
 				attachment=attachment,
 				whatsapp_message_template=whatsapp_message_template,
 				whatsapp_reply_handler=whatsapp_reply_handler,
+				whatsapp_provider=whatsapp_provider,
 				content_variables=content_variables,
 				notification_type=notification_type,
 			)
@@ -264,10 +267,17 @@ class WhatsAppMessage(Document):
 		attachment=None,
 		whatsapp_message_template=None,
 		whatsapp_reply_handler=None,
+		whatsapp_provider=None,
 		content_variables=None,
 		notification_type=None,
 	):
 		sender = frappe.db.get_single_value('WhatsApp Settings', 'whatsapp_no')
+		if not sender:
+			frappe.throw(_("Please configure WhatsApp Number"))
+
+		whatsapp_provider = whatsapp_provider or frappe.db.get_single_value('WhatsApp Settings', 'whatsapp_provider')
+		if not whatsapp_provider:
+			frappe.throw(_("Please configure WhatsApp Provider"))
 
 		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
 		reply_handler = template.reply_handler if template else whatsapp_reply_handler
@@ -289,19 +299,39 @@ class WhatsAppMessage(Document):
 			'notification_type': notification_type,
 			'template_sid': template.template_sid or None,
 			'reply_handler': reply_handler or None,
+			'whatsapp_provider': whatsapp_provider or None,
 			'status': 'Not Sent',
 			'retry': 0,
 		})
 		wa_msg.insert(ignore_permissions=True)
 
-		if template.media_variable and template.media_variable not in content_variables:
-			if template.media_variable_type == "Message ID":
-				content_variables[template.media_variable] = quote(wa_msg.name)
+		# Media URL and Content Variables
+		media_url = None
+		if not content_variables:
+			content_variables = {}
+
+		if template.media_variable:
+			# Media URL provided
+			if template.media_variable in content_variables:
+				media_url = content_variables[template.media_variable]
+				if whatsapp_provider != "Twilio":
+					del content_variables[template.media_variable]
+
+			# Media URL to be generated
 			else:
-				content_variables[template.media_variable] = f"api/method/twilio.whatsapp_media?id={quote(wa_msg.name)}"
+				if whatsapp_provider == "Twilio":
+					media_url = f"api/method/twilio.whatsapp_media?id={quote(wa_msg.name)}"
+					content_variables[template.media_variable] = media_url
+				else:
+					site_url = get_site_url(frappe.local.site)
+					params = get_signed_params({"id": wa_msg.name})
+					media_url = f"{site_url}/api/method/whatsapp.secure_whatsapp_media?{params}"
 
 		if content_variables:
-			wa_msg.db_set("content_variables", json.dumps(content_variables, sort_keys=False))
+			wa_msg.db_set({
+				"content_variables": json.dumps(content_variables, sort_keys=False) if content_variables else None,
+				"media_url": media_url,
+			})
 
 		return wa_msg
 
@@ -370,17 +400,28 @@ class WhatsAppMessage(Document):
 			}
 		}
 
+		rich_template_data = {}
+
+		# Media Header
+		if self.media_url:
+			rich_template_data["header"] = {
+				"type": "image",
+				"media_url": self.media_url,
+			}
+
+		# Variables Body
 		if self.content_variables:
 			params_list = []
 			content_variables = json.loads(self.content_variables)
 			for value in content_variables.values():
 				params_list.append({"data": value})
 
-			message_data["rich_template_data"] = {
-				"body": {
-					"params": params_list
-				}
+			rich_template_data["body"] = {
+				"params": params_list
 			}
+
+		if rich_template_data:
+			message_data["rich_template_data"] = rich_template_data
 
 		payload = {
 			"channel_id": channel_id,
@@ -449,7 +490,7 @@ class WhatsAppMessage(Document):
 		"""
 		This method Reconciles delivery status for a single message with status 'Sent' or 'Queued'
 		"""
-		if are_whatsapp_messages_muted():
+		if are_whatsapp_messages_muted(self.whatsapp_provider):
 			frappe.msgprint(_("WhatsApp messages are muted"))
 			return
 
@@ -505,19 +546,19 @@ def run_after_send_method(reference_doctype=None, reference_name=None, notificat
 		add_notification_count(reference_doctype, reference_name, notification_type, 'WhatsApp')
 
 
-def are_whatsapp_messages_muted():
-	if not is_whatsapp_enabled():
+def are_whatsapp_messages_muted(whatsapp_provider=None):
+	if not is_whatsapp_enabled(whatsapp_provider):
 		return True
 
 	return frappe.flags.mute_whatsapp or cint(frappe.conf.get("mute_whatsapp") or 0) or False
 
 
-def is_whatsapp_enabled():
+def is_whatsapp_enabled(whatsapp_provider=None):
 	whatsapp_no = frappe.get_cached_value("WhatsApp Settings", None, "whatsapp_no")
 	if not whatsapp_no:
 		return False
 
-	whatsapp_provider = frappe.get_cached_value("WhatsApp Settings", None, "whatsapp_provider")
+	whatsapp_provider = whatsapp_provider or frappe.get_cached_value("WhatsApp Settings", None, "whatsapp_provider")
 	if whatsapp_provider == "Twilio":
 		return True if frappe.get_cached_value("Twilio Settings", None, 'enabled') else False
 	elif whatsapp_provider == "Freshchat":
@@ -541,11 +582,11 @@ def flush_outgoing_message_queue(from_test=False):
 def send_whatsapp_message(message_name, auto_commit=True, now=False):
 	from frappe.email.doctype.notification.notification import get_doc_for_notification_triggers
 
-	if are_whatsapp_messages_muted():
+	message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
+
+	if are_whatsapp_messages_muted(message_doc.whatsapp_provider):
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
-
-	message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
 
 	if message_doc.status != "Not Sent" or message_doc.sent_received != "Sent":
 		if auto_commit:
@@ -560,7 +601,7 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 		doc = get_doc_for_notification_triggers(message_doc.reference_doctype, message_doc.reference_name)
 		run_before_send_method(doc, notification_type=message_doc.notification_type)
 
-		whatsapp_provider = frappe.db.get_single_value("WhatsApp Settings", "whatsapp_provider")
+		whatsapp_provider = message_doc.whatsapp_provider
 		if whatsapp_provider == "Twilio":
 			result = message_doc.send_whatsapp_via_twilio()
 		elif whatsapp_provider == "Freshchat":
@@ -630,14 +671,14 @@ def download_incoming_media(message_name, auto_commit=True, now=False):
 	import mimetypes
 	import os
 
-	if are_whatsapp_messages_muted():
-		frappe.msgprint(_("WhatsApp messages are muted"))
-		return
-
 	if isinstance(message_name, Document):
 		message_doc = message_name
 	else:
 		message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
+
+	if are_whatsapp_messages_muted(message_doc.whatsapp_provider):
+		frappe.msgprint(_("WhatsApp messages are muted"))
+		return
 
 	if message_doc.incoming_media_status != "To Download" or message_doc.sent_received != "Received":
 		if auto_commit:
@@ -901,6 +942,64 @@ def get_pending_status_reconciliation_messages(limit):
 		ORDER BY creation DESC
 		LIMIT %s
 	""", (limit,), as_dict=True)
+
+
+@frappe.whitelist(allow_guest=True)
+def secure_whatsapp_media(**kwargs):
+	message_name = kwargs.get("message_id") or kwargs.get("message") or kwargs.get("id")
+	if not message_name:
+		frappe.throw(_("Message ID missing"), exc=frappe.ValidationError)
+
+	if not verify_request():
+		raise frappe.PermissionError
+
+	message_doc = frappe.get_doc("WhatsApp Message", message_name)
+	return serve_whatsapp_media(message_doc)
+
+
+def serve_whatsapp_media(message_doc):
+	import os
+
+	if message_doc.sent_received != "Sent":
+		raise frappe.PermissionError
+
+	attachment = message_doc.get_attachment(store_print_attachment=True)
+	if not attachment:
+		raise frappe.DoesNotExistError
+
+	file_filters = {}
+	if attachment.get("fid"):
+		file_filters["name"] = attachment.get("fid")
+	elif attachment.get("file_url"):
+		file_filters["file_url"] = attachment.get("file_url")
+
+	if file_filters:
+		from werkzeug.utils import send_file
+		import mimetypes
+
+		file = frappe.get_doc("File", file_filters)
+		media_file_path = file.get_full_path()
+		if not os.path.isfile(media_file_path):
+			raise frappe.DoesNotExistError
+
+		media_filename = file.original_file_name or file.file_name
+		mimetype = mimetypes.guess_type(media_filename)[0] or "application/octet-stream"
+
+		output = open(media_file_path, "rb")
+		return send_file(
+			output,
+			environ=frappe.local.request.environ,
+			mimetype=mimetype,
+			download_name=media_filename,
+		)
+
+	elif attachment.get("print_format_attachment") == 1:
+		print_format_file = message_doc.get_print_format_file(attachment)
+		frappe.local.response.filename = print_format_file["fname"]
+		frappe.local.response.filecontent = print_format_file["fcontent"]
+		frappe.local.response.type = "download"
+	else:
+		raise frappe.DoesNotExistError
 
 
 def on_doctype_update():

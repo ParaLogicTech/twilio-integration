@@ -16,12 +16,13 @@ override_whitelisted_methods = {
 	"twilio.incoming_whatsapp_message_handler": "twilio_integration.twilio_integration.api.incoming_whatsapp_message_handler",
 	"twilio.whatsapp_media": "twilio_integration.twilio_integration.api.download_whatsapp_media",
 	"twilio.whatsapp_message_status_callback": "twilio_integration.twilio_integration.api.whatsapp_message_status_callback",
+	"whatsapp.secure_whatsapp_media": "twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.secure_whatsapp_media",
 	# "twilio.webhook_sink_handler": "twilio_integration.twilio_integration.api.whatsapp_message_status_callback",
 }
 
 website_redirects = [
 	{
-		"source": r"/whatsapp-media/(.*)",
+		"source": r"/twilio-whatsapp-media/(.*)",
 		"target": r"/api/method/twilio.whatsapp_media?id=\1",
 	}
 ]

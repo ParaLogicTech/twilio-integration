@@ -7,10 +7,10 @@ from frappe.contacts.doctype.contact.contact import get_contact_with_phone_numbe
 from .twilio_handler import Twilio, IncomingCall, TwilioCallDetails, validate_twilio_request
 from twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message import (
 	incoming_message_callback,
-	outgoing_message_status_callback
+	outgoing_message_status_callback,
+	serve_whatsapp_media,
 )
 from twilio.twiml.messaging_response import MessagingResponse
-import os
 
 
 @frappe.whitelist()
@@ -178,43 +178,4 @@ def download_whatsapp_media(**kwargs):
 		frappe.throw(_("Message ID missing"), exc=frappe.ValidationError)
 
 	message_doc = frappe.get_doc("WhatsApp Message", message_name)
-	if message_doc.sent_received != "Sent":
-		raise frappe.PermissionError
-
-	attachment = message_doc.get_attachment(store_print_attachment=True)
-	if not attachment:
-		raise frappe.DoesNotExistError
-
-	file_filters = {}
-	if attachment.get("fid"):
-		file_filters["name"] = attachment.get("fid")
-	elif attachment.get("file_url"):
-		file_filters["file_url"] = attachment.get("file_url")
-
-	if file_filters:
-		from werkzeug.utils import send_file
-		import mimetypes
-
-		file = frappe.get_doc("File", file_filters)
-		media_file_path = file.get_full_path()
-		if not os.path.isfile(media_file_path):
-			raise frappe.DoesNotExistError
-
-		media_filename = file.original_file_name or file.file_name
-		mimetype = mimetypes.guess_type(media_filename)[0] or "application/octet-stream"
-
-		output = open(media_file_path, "rb")
-		return send_file(
-			output,
-			environ=frappe.local.request.environ,
-			mimetype=mimetype,
-			download_name=media_filename,
-		)
-
-	elif attachment.get("print_format_attachment") == 1:
-		print_format_file = message_doc.get_print_format_file(attachment)
-		frappe.local.response.filename = print_format_file["fname"]
-		frappe.local.response.filecontent = print_format_file["fcontent"]
-		frappe.local.response.type = "pdf"
-	else:
-		raise frappe.DoesNotExistError
+	return serve_whatsapp_media(message_doc)

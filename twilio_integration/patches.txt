@@ -2,3 +2,4 @@
 
 [post_model_sync]
 twilio_integration.patches.rename_fields_send_on
+execute:frappe.db.sql("update `tabWhatsApp Message` set whatsapp_provider = 'Twilio'")
