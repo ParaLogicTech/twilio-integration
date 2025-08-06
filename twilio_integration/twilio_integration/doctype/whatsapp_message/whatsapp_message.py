@@ -344,10 +344,12 @@ class WhatsAppMessage(Document):
 		if date_sent:
 			date_sent = convert_utc_to_system_timezone(date_sent).replace(tzinfo=None)
 
+		self.id = response.sid
 		return frappe._dict({
 			"id": response.sid,
 			"status": response.status.title(),
 			"date_sent": date_sent,
+			"error": None,
 		})
 
 	def get_twilio_message_dict(self):
@@ -395,7 +397,7 @@ class WhatsAppMessage(Document):
 				"namespace": namespace,
 				"language": {
 					"policy": "deterministic",
-					"code": "en_US"
+					"code": "en_US"  # TODO set language
 				},
 			}
 		}
@@ -405,7 +407,7 @@ class WhatsAppMessage(Document):
 		# Media Header
 		if self.media_url:
 			rich_template_data["header"] = {
-				"type": "image",
+				"type": "document",  # TODO determine type
 				"media_url": self.media_url,
 			}
 
@@ -436,11 +438,15 @@ class WhatsAppMessage(Document):
 
 		response_data = response.json()
 
-		return frappe._dict({
+		out = frappe._dict({
 			"id": response_data.get("request_id"),
 			"status": "Queued",
 			"date_sent": frappe.utils.now(),
+			"error": None,
 		})
+		self.id = out.id
+
+		return out
 
 	@classmethod
 	def get_last_indirect_reply_message(cls, to, from_):
@@ -494,19 +500,82 @@ class WhatsAppMessage(Document):
 			frappe.msgprint(_("WhatsApp messages are muted"))
 			return
 
+		if not self.id:
+			return
 		if self.status not in ('Sent', 'Queued'):
 			return
 
-		original_message_status = self.status
-		new_message_status = Twilio.get_message(self.id).status.title()
+		previous_status = self.status
+		message_status = self.get_message_status()
 
-		if not new_message_status or (new_message_status == original_message_status):
+		if not message_status.status or (message_status.status == previous_status):
 			return
 
-		self.db_set("status", new_message_status)
+		self.db_set({
+			"status": message_status.status,
+			"error": message_status.error,
+		})
 
 		if self.communication:
 			frappe.get_doc('Communication', self.communication).set_delivery_status(commit=False)
+
+	def get_message_status(self):
+		if self.whatsapp_provider == "Twilio":
+			return self.get_message_status_from_twilio()
+		elif self.whatsapp_provider == "Freshchat":
+			return self.get_message_status_from_freshchat()
+		else:
+			return frappe._dict()
+
+	def get_message_status_from_twilio(self):
+		out = frappe._dict({
+			"status": None,
+			"error": None,
+		})
+		if not self.id:
+			return out
+
+		out.status = Twilio.get_message(self.id).status.title()
+		return out
+
+	def get_message_status_from_freshchat(self):
+		out = frappe._dict({
+			"status": None,
+			"error": None,
+		})
+		if not self.id:
+			return out
+
+		freshchat_settings = frappe.get_single("Freshchat Settings")
+
+		api_key = freshchat_settings.api_key
+		api_endpoint = urljoin(freshchat_settings.api_endpoint, "/v2/outbound-messages")
+
+		headers = {
+			"Authorization": f"Bearer {api_key}",
+			"Content-Type": "application/json"
+		}
+
+		response = requests.get(api_endpoint, headers=headers, params={"request_id": self.id})
+		response.raise_for_status()
+
+		response_data = response.json()
+
+		message_data = response_data.get("outbound_messages")
+		message_data = message_data[0] if message_data else None
+
+		if not message_data or not message_data.get("status"):
+			return out
+
+		if message_data.get("status") in ("IN_PROGRESS", "ACCEPTED"):
+			out.status = "Queued"
+		else:
+			out.status = message_data.get("status").title()
+
+		if out.status == "Failed":
+			out.error = message_data.get("failure_reason")
+
+		return out
 
 
 def outgoing_message_status_callback(args, auto_commit=False):
@@ -613,7 +682,7 @@ def send_whatsapp_message(message_name, auto_commit=True, now=False):
 			"id": result.get("id"),
 			"status": result.get("status"),
 			"date_sent": result.get("date_sent"),
-			"error": None,
+			"error": result.get("error"),
 		}, commit=auto_commit)
 
 		if message_doc.communication:
