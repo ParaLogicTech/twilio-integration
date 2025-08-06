@@ -967,7 +967,7 @@ def incoming_message_callback(args):
 	return out
 
 
-def reconcile_message_delivery_status(limit=100, auto_commit=True):
+def update_messages_pending_status_reconciliation(limit=100, auto_commit=True):
 	"""
 	Reconcile delivery status for all messages with status 'Sent' or 'Queued'
 	This method processes messages in batches with proper error handling
@@ -976,29 +976,32 @@ def reconcile_message_delivery_status(limit=100, auto_commit=True):
 		frappe.msgprint(_("WhatsApp messages are muted"))
 		return
 
-	messages_to_reconcile = get_pending_status_reconciliation_messages(limit)
-
-	for name in messages_to_reconcile:
-		try:
-			message_doc = frappe.get_doc("WhatsApp Message", name, for_update=True)
-			message_doc.update_message_delivery_status()
-
-			if auto_commit:
-				frappe.db.commit()
-
-		except Exception as e:
-			if auto_commit:
-				frappe.db.rollback()
-
-			frappe.log_error(
-				title=_("Error Reconciling WhatsApp Message Delivery Status"),
-				message=str(e),
-				reference_doctype="WhatsApp Message",
-				reference_name=name
-			)
+	for name in get_messages_pending_status_reconciliation(limit):
+		reconcile_message_status(name, auto_commit=auto_commit)
 
 
-def get_pending_status_reconciliation_messages(limit):
+@frappe.task(queue="long")
+def reconcile_message_status(message_name, auto_commit=True):
+	try:
+		message_doc = frappe.get_doc("WhatsApp Message", message_name, for_update=True)
+		message_doc.update_message_delivery_status()
+
+		if auto_commit:
+			frappe.db.commit()
+
+	except Exception as e:
+		if auto_commit:
+			frappe.db.rollback()
+
+		frappe.log_error(
+			title=_("Error Reconciling WhatsApp Message Delivery Status"),
+			message=str(e),
+			reference_doctype="WhatsApp Message",
+			reference_name=message_name
+		)
+
+
+def get_messages_pending_status_reconciliation(limit):
 	"""
 	Fetch WhatsApp messages with status 'Sent' or 'Queued' and that haven't received delivery confirmation
 	"""

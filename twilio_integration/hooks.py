@@ -66,8 +66,8 @@ scheduler_events = {
 		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.flush_outgoing_message_queue",
 	],
 	"hourly_long": [
+		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.update_messages_pending_status_reconciliation",
 		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.flush_incoming_media_queue",
-		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.reconcile_message_delivery_status",
 	],
 	"daily": [
 		"twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.expire_whatsapp_message_queue",
