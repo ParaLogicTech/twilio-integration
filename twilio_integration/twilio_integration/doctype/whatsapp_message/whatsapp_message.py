@@ -423,7 +423,7 @@ class WhatsAppMessage(Document):
 			}
 
 		if rich_template_data:
-			message_data["rich_template_data"] = rich_template_data
+			message_data["message_template"]["rich_template_data"] = rich_template_data
 
 		payload = {
 			"channel_id": channel_id,
