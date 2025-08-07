@@ -17,6 +17,7 @@ override_whitelisted_methods = {
 	"twilio.whatsapp_media": "twilio_integration.twilio_integration.api.download_whatsapp_media",
 	"twilio.whatsapp_message_status_callback": "twilio_integration.twilio_integration.api.whatsapp_message_status_callback",
 	"whatsapp.secure_whatsapp_media": "twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.secure_whatsapp_media",
+	"whatsapp.secure_whatsapp_media.pdf": "twilio_integration.twilio_integration.doctype.whatsapp_message.whatsapp_message.secure_whatsapp_media",
 	# "twilio.webhook_sink_handler": "twilio_integration.twilio_integration.api.whatsapp_message_status_callback",
 }
 

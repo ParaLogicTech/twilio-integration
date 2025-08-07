@@ -325,7 +325,7 @@ class WhatsAppMessage(Document):
 				else:
 					site_url = get_site_url(frappe.local.site)
 					params = get_signed_params({"id": wa_msg.name})
-					media_url = f"{site_url}/api/method/whatsapp.secure_whatsapp_media?{params}"
+					media_url = f"{site_url}/api/method/whatsapp.secure_whatsapp_media.pdf?{params}"
 
 		if content_variables:
 			wa_msg.db_set({
