@@ -445,7 +445,8 @@ class WhatsAppMessage(Document):
 				"bodyParameters": body_parameters,
 				"headerParameters": header_parameters,
 				"buttonUrlParameters": button_parameters,
-			}
+			},
+			"useExistingActiveConversation": True,
 		}
 
 		response = requests.post(
