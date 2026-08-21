@@ -11,6 +11,8 @@
   "column_break_4l5u",
   "media_variable",
   "button_variable",
+  "send_media_as_body_parameter",
+  "media_variable_parameter_number",
   "column_break_r7ey",
   "reply_handler",
   "section_break_xvor",
@@ -80,12 +82,25 @@
    "fieldname": "button_variable",
    "fieldtype": "Data",
    "label": "Button Variable"
+  },
+  {
+   "depends_on": "eval:doc.send_media_as_body_parameter",
+   "fieldname": "media_variable_parameter_number",
+   "fieldtype": "Int",
+   "label": "Media Variable Parameter Number",
+   "non_negative": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "send_media_as_body_parameter",
+   "fieldtype": "Check",
+   "label": "Send Media as a Body Parameter"
   }
  ],
  "grid_page_length": 500,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-07 13:23:35.920117",
+ "modified": "2026-08-21 17:56:27.197327",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message Template",
@@ -106,6 +121,7 @@
   }
  ],
  "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
  "search_fields": "template_sid",
  "sort_field": "modified",
  "sort_order": "DESC",

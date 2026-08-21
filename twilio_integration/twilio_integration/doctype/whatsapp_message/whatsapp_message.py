@@ -289,6 +289,8 @@ class WhatsAppMessage(Document):
 
 		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
 		reply_handler = template.reply_handler if template else whatsapp_reply_handler
+		send_media_as_body_parameter = template.send_media_as_body_parameter
+		media_variable_parameter_number = template.media_variable_parameter_number
 
 		wa_msg = frappe.new_doc("WhatsApp Message")
 		wa_msg.update({
@@ -308,6 +310,8 @@ class WhatsAppMessage(Document):
 			'template_sid': template.template_sid or None,
 			'reply_handler': reply_handler or None,
 			'whatsapp_provider': whatsapp_provider or None,
+			'send_media_as_body_parameter': send_media_as_body_parameter,
+			'media_variable_parameter_number': media_variable_parameter_number,
 			'status': 'Not Sent',
 			'retry': 0,
 		})
@@ -419,15 +423,29 @@ class WhatsAppMessage(Document):
 			for i, value in enumerate(content_variables.values()):
 				body_parameters.append({"id": i + 1, "value": value})
 
+		messagingTemplate =  {
+			"responseId": self.template_sid,
+			"bodyParameters":body_parameters
+		}
+
 		# Media Header
-		header_parameters = []
-		if self.media_url:
-			header_parameters.append({"id": 1, "value": self.media_url})
+		if not self.send_media_as_body_parameter:
+			header_parameters = []
+			if self.media_url:
+				header_parameters.append({"id": 1, "value": self.media_url})
+			messagingTemplate.update({"headerParameters":header_parameters})
+		else:
+			media_url_body_dict = {"id":self.media_variable_parameter_number, "value": self.media_url}
+			for each_item in body_parameters:
+				if each_item['id'] >= self.media_variable_parameter_number:
+					each_item['id'] += 1
+			body_parameters.append(media_url_body_dict)
 
 		# Button URL
 		button_parameters = []
 		if self.button_url:
 			button_parameters.append({"id": 1, "value": self.button_url})
+		messagingTemplate.update({"buttonUrlParameters":button_parameters})
 
 		access_token = genesys_settings.get_access_token()
 		headers = {
@@ -440,19 +458,14 @@ class WhatsAppMessage(Document):
 			"toAddress": to_number,
 			"toAddressMessengerType": "whatsapp",
 			"textBody": "",
-			"messagingTemplate": {
-				"responseId": self.template_sid,
-				"bodyParameters": body_parameters,
-				"headerParameters": header_parameters,
-				"buttonUrlParameters": button_parameters,
-			},
+			"messagingTemplate": messagingTemplate,
 			"useExistingActiveConversation": True,
 		}
 
 		response = requests.post(
 			url,
 			headers=headers,
-			json=payload,
+			data=json.dumps(payload),
 			timeout=30,
 		)
 
