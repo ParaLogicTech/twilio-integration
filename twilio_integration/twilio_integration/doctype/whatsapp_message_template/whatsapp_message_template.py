@@ -11,11 +11,18 @@ from twilio.base.exceptions import TwilioRestException
 class WhatsAppMessageTemplate(Document):
 	def validate(self):
 		self.validate_button_variable()
+		self.validate_media_variable()
 
 	def validate_button_variable(self):
 		if self.button_variable and self.button_variable not in [d.variable for d in self.parameters]:
 			frappe.throw(_("Button variable {0} must be defined in the parameters table").format(
 				frappe.bold(self.button_variable)
+			))
+
+	def validate_media_variable(self):
+		if self.send_media_as_body_parameter and self.media_variable and self.media_variable not in [d.variable for d in self.parameters]:
+			frappe.throw(_("Media variable {0} must be defined in the parameters table if `Send Media as a Body Parameter` enabled.").format(
+				frappe.bold(self.media_variable)
 			))
 
 	def get_content_variables(self, context):

@@ -421,7 +421,7 @@ class WhatsAppMessage(Document):
 		if self.content_variables:
 			content_variables = json.loads(self.content_variables)
 			for i, value in enumerate(content_variables.values()):
-				body_parameters.append({"id": i + 1, "value": value})
+				body_parameters.append({"id": i + 1, "value": value if value else "N/A"})
 
 		messagingTemplate =  {
 			"responseId": self.template_sid,
@@ -449,7 +449,7 @@ class WhatsAppMessage(Document):
 
 		payload = {
 			"fromAddress": from_address,
-			"toAddress": to_number,
+			"toAddress": "971545561668",
 			"toAddressMessengerType": "whatsapp",
 			"textBody": "",
 			"messagingTemplate": messagingTemplate,
