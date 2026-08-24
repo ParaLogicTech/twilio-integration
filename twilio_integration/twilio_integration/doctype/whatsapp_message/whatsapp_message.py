@@ -328,7 +328,7 @@ class WhatsAppMessage(Document):
 
 			# Media URL to be generated
 			else:
-				if whatsapp_provider == "Twilio": 
+				if whatsapp_provider == "Twilio":
 					media_url = f"api/method/twilio.whatsapp_media?id={quote(wa_msg.name)}"
 					content_variables[template.media_variable] = media_url
 				else:
