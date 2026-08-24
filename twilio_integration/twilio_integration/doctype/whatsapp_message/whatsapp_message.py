@@ -290,7 +290,6 @@ class WhatsAppMessage(Document):
 		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
 		reply_handler = template.reply_handler if template else whatsapp_reply_handler
 		send_media_as_body_parameter = template.send_media_as_body_parameter
-		media_variable_parameter_number = template.media_variable_parameter_number
 
 		wa_msg = frappe.new_doc("WhatsApp Message")
 		wa_msg.update({
@@ -311,7 +310,6 @@ class WhatsAppMessage(Document):
 			'reply_handler': reply_handler or None,
 			'whatsapp_provider': whatsapp_provider or None,
 			'send_media_as_body_parameter': send_media_as_body_parameter,
-			'media_variable_parameter_number': media_variable_parameter_number,
 			'status': 'Not Sent',
 			'retry': 0,
 		})
@@ -325,14 +323,13 @@ class WhatsAppMessage(Document):
 
 		if template.media_variable:
 			# Media URL provided
-			if template.media_variable in content_variables:
+			if (template.media_variable in content_variables) and  (not send_media_as_body_parameter):
 				media_url = content_variables[template.media_variable]
 				if whatsapp_provider != "Twilio":
 					del content_variables[template.media_variable]
-
 			# Media URL to be generated
 			else:
-				if whatsapp_provider == "Twilio":
+				if whatsapp_provider == "Twilio": 
 					media_url = f"api/method/twilio.whatsapp_media?id={quote(wa_msg.name)}"
 					content_variables[template.media_variable] = media_url
 				else:
@@ -352,6 +349,9 @@ class WhatsAppMessage(Document):
 					site_url = get_site_url(frappe.local.site)
 					params = get_signed_params({"id": wa_msg.name})
 					media_url = f"{site_url}/secure-whatsapp-media/{file_name}?{params}"
+					if send_media_as_body_parameter:
+						content_variables[template.media_variable] = media_url
+			
 
 		if template.button_variable:
 			button_url = content_variables.get(template.button_variable)
@@ -434,12 +434,6 @@ class WhatsAppMessage(Document):
 			if self.media_url:
 				header_parameters.append({"id": 1, "value": self.media_url})
 			messagingTemplate.update({"headerParameters":header_parameters})
-		else:
-			media_url_body_dict = {"id":self.media_variable_parameter_number, "value": self.media_url}
-			for each_item in body_parameters:
-				if each_item['id'] >= self.media_variable_parameter_number:
-					each_item['id'] += 1
-			body_parameters.append(media_url_body_dict)
 
 		# Button URL
 		button_parameters = []
