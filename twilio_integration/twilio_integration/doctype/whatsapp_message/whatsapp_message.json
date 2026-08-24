@@ -43,6 +43,7 @@
   "reply_handler_expired",
   "media_section",
   "attachment",
+  "send_media_as_body_parameter",
   "column_break_j7er",
   "media_url",
   "incoming_media_status"
@@ -316,6 +317,13 @@
    "label": "Conversation ID",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "send_media_as_body_parameter",
+   "fieldtype": "Check",
+   "label": "Send Media As Body Parameter",
+   "read_only": 1
   }
  ],
  "grid_page_length": 500,
@@ -323,7 +331,7 @@
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2026-07-23 12:17:18.375828",
+ "modified": "2026-08-24 21:53:09.049814",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",

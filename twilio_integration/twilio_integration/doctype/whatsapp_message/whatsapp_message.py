@@ -289,6 +289,7 @@ class WhatsAppMessage(Document):
 
 		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
 		reply_handler = template.reply_handler if template else whatsapp_reply_handler
+		send_media_as_body_parameter = cint(template.send_media_as_body_parameter)
 
 		wa_msg = frappe.new_doc("WhatsApp Message")
 		wa_msg.update({
@@ -308,6 +309,7 @@ class WhatsAppMessage(Document):
 			'template_sid': template.template_sid or None,
 			'reply_handler': reply_handler or None,
 			'whatsapp_provider': whatsapp_provider or None,
+			'send_media_as_body_parameter': send_media_as_body_parameter,
 			'status': 'Not Sent',
 			'retry': 0,
 		})
@@ -321,10 +323,8 @@ class WhatsAppMessage(Document):
 
 		if template.media_variable:
 			# Media URL provided
-			if template.media_variable in content_variables:
+			if content_variables.get(template.media_variable):
 				media_url = content_variables[template.media_variable]
-				if whatsapp_provider != "Twilio":
-					del content_variables[template.media_variable]
 
 			# Media URL to be generated
 			else:
@@ -348,6 +348,17 @@ class WhatsAppMessage(Document):
 					site_url = get_site_url(frappe.local.site)
 					params = get_signed_params({"id": wa_msg.name})
 					media_url = f"{site_url}/secure-whatsapp-media/{file_name}?{params}"
+
+					if send_media_as_body_parameter:
+						content_variables[template.media_variable] = media_url
+
+			# Remove media body parameter, since it will be added in header instead
+			if (
+				not send_media_as_body_parameter
+				and whatsapp_provider != "Twilio"
+				and template.media_variable in content_variables
+			):
+				del content_variables[template.media_variable]
 
 		if template.button_variable:
 			button_url = content_variables.get(template.button_variable)
@@ -421,7 +432,7 @@ class WhatsAppMessage(Document):
 
 		# Media Header
 		header_parameters = []
-		if self.media_url:
+		if self.media_url and not self.send_media_as_body_parameter:
 			header_parameters.append({"id": 1, "value": self.media_url})
 
 		# Button URL
@@ -452,7 +463,7 @@ class WhatsAppMessage(Document):
 		response = requests.post(
 			url,
 			headers=headers,
-			json=payload,
+			data=json.dumps(payload),
 			timeout=30,
 		)
 
