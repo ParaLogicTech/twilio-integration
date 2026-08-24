@@ -20,8 +20,12 @@ class WhatsAppMessageTemplate(Document):
 			))
 
 	def validate_media_variable(self):
-		if self.send_media_as_body_parameter and self.media_variable and self.media_variable not in [d.variable for d in self.parameters]:
-			frappe.throw(_("Media variable {0} must be defined in the parameters table if `Send Media as a Body Parameter` enabled.").format(
+		if (
+			self.send_media_as_body_parameter
+			and self.media_variable
+			and self.media_variable not in [d.variable for d in self.parameters]
+		):
+			frappe.throw(_("Media variable {0} must be defined in the parameters table for sending Media URL in body.").format(
 				frappe.bold(self.media_variable)
 			))
 

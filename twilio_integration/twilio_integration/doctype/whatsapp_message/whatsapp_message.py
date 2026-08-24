@@ -289,7 +289,7 @@ class WhatsAppMessage(Document):
 
 		template = frappe.get_cached_doc("WhatsApp Message Template", whatsapp_message_template) if whatsapp_message_template else frappe._dict()
 		reply_handler = template.reply_handler if template else whatsapp_reply_handler
-		send_media_as_body_parameter = template.send_media_as_body_parameter
+		send_media_as_body_parameter = cint(template.send_media_as_body_parameter)
 
 		wa_msg = frappe.new_doc("WhatsApp Message")
 		wa_msg.update({
@@ -323,10 +323,9 @@ class WhatsAppMessage(Document):
 
 		if template.media_variable:
 			# Media URL provided
-			if (template.media_variable in content_variables) and  (not send_media_as_body_parameter):
+			if content_variables.get(template.media_variable):
 				media_url = content_variables[template.media_variable]
-				if whatsapp_provider != "Twilio":
-					del content_variables[template.media_variable]
+
 			# Media URL to be generated
 			else:
 				if whatsapp_provider == "Twilio": 
@@ -349,9 +348,17 @@ class WhatsAppMessage(Document):
 					site_url = get_site_url(frappe.local.site)
 					params = get_signed_params({"id": wa_msg.name})
 					media_url = f"{site_url}/secure-whatsapp-media/{file_name}?{params}"
+
 					if send_media_as_body_parameter:
 						content_variables[template.media_variable] = media_url
-			
+
+			# Remove media body parameter, since it will be added in header instead
+			if (
+				not send_media_as_body_parameter
+				and whatsapp_provider != "Twilio"
+				and template.media_variable in content_variables
+			):
+				del content_variables[template.media_variable]
 
 		if template.button_variable:
 			button_url = content_variables.get(template.button_variable)
@@ -421,25 +428,17 @@ class WhatsAppMessage(Document):
 		if self.content_variables:
 			content_variables = json.loads(self.content_variables)
 			for i, value in enumerate(content_variables.values()):
-				body_parameters.append({"id": i + 1, "value": value if value else "N/A"})
-
-		messagingTemplate =  {
-			"responseId": self.template_sid,
-			"bodyParameters":body_parameters
-		}
+				body_parameters.append({"id": i + 1, "value": value})
 
 		# Media Header
-		if not self.send_media_as_body_parameter:
-			header_parameters = []
-			if self.media_url:
-				header_parameters.append({"id": 1, "value": self.media_url})
-			messagingTemplate.update({"headerParameters":header_parameters})
+		header_parameters = []
+		if self.media_url and not self.send_media_as_body_parameter:
+			header_parameters.append({"id": 1, "value": self.media_url})
 
 		# Button URL
 		button_parameters = []
 		if self.button_url:
 			button_parameters.append({"id": 1, "value": self.button_url})
-		messagingTemplate.update({"buttonUrlParameters":button_parameters})
 
 		access_token = genesys_settings.get_access_token()
 		headers = {
@@ -449,10 +448,15 @@ class WhatsAppMessage(Document):
 
 		payload = {
 			"fromAddress": from_address,
-			"toAddress": "971545561668",
+			"toAddress": to_number,
 			"toAddressMessengerType": "whatsapp",
 			"textBody": "",
-			"messagingTemplate": messagingTemplate,
+			"messagingTemplate": {
+				"responseId": self.template_sid,
+				"bodyParameters": body_parameters,
+				"headerParameters": header_parameters,
+				"buttonUrlParameters": button_parameters,
+			},
 			"useExistingActiveConversation": True,
 		}
 

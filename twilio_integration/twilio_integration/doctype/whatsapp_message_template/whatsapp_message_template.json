@@ -10,14 +10,15 @@
   "template_sid",
   "column_break_4l5u",
   "media_variable",
-  "button_variable",
   "send_media_as_body_parameter",
   "column_break_r7ey",
-  "reply_handler",
+  "button_variable",
   "section_break_xvor",
   "template_body",
   "section_break_fo6w",
-  "parameters"
+  "parameters",
+  "reply_handler_section",
+  "reply_handler"
  ],
  "fields": [
   {
@@ -86,13 +87,20 @@
    "default": "0",
    "fieldname": "send_media_as_body_parameter",
    "fieldtype": "Check",
-   "label": "Send Media as a Body Parameter"
+   "label": "Send Media URL in Body"
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "reply_handler",
+   "fieldname": "reply_handler_section",
+   "fieldtype": "Section Break",
+   "label": "Reply Handler"
   }
  ],
  "grid_page_length": 500,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-24 11:19:51.268266",
+ "modified": "2026-08-24 21:54:02.479649",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message Template",
