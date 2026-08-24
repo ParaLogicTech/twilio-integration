@@ -21,7 +21,6 @@
   "priority",
   "status_reconciliation_failed",
   "send_media_as_body_parameter",
-  "media_variable_parameter_number",
   "section_break_jhlu",
   "message",
   "column_break_o6kp",
@@ -326,14 +325,6 @@
    "label": "Send Media As Body Parameter",
    "no_copy": 1,
    "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "media_variable_parameter_number",
-   "fieldtype": "Check",
-   "label": "Media Variable Parameter Number",
-   "no_copy": 1,
-   "read_only": 1
   }
  ],
  "grid_page_length": 500,
@@ -341,7 +332,7 @@
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2026-08-21 19:42:37.495961",
+ "modified": "2026-08-24 16:30:07.579894",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
