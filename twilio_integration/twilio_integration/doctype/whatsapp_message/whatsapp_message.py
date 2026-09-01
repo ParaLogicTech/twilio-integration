@@ -419,16 +419,22 @@ class WhatsAppMessage(Document):
 		url = urljoin(genesys_settings.api_base_url, "/api/v2/conversations/messages/agentless")
 		from_address = genesys_settings.from_address
 
+		whatsapp_message_template = frappe.get_doc("WhatsApp Message Template", {"template_sid": self.template_sid})
+
 		to_number = self.to.replace("whatsapp:", "")
 		if to_number.startswith("+"):
 			to_number = to_number[1:]
 
-		# Template Body
+		# Template Body — build parameters in the order defined in the template's parameters child table
 		body_parameters = []
 		if self.content_variables:
 			content_variables = json.loads(self.content_variables)
-			for i, value in enumerate(content_variables.values()):
-				body_parameters.append({"id": i + 1, "value": value})
+			for param in whatsapp_message_template.parameters:
+				if param.variable in content_variables:
+					body_parameters.append({
+						"id": len(body_parameters) + 1,
+						"value": content_variables[param.variable],
+					})
 
 		# Media Header
 		header_parameters = []
