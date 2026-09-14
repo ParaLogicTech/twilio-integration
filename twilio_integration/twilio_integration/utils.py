@@ -1,6 +1,14 @@
 from pyngrok import ngrok
 import frappe
-from frappe.utils import get_url
+from frappe.utils import get_url, get_link_to_form
+
+PROVIDER_SETTINGS = {
+	"Twilio": "Twilio Settings",
+	"Freshchat": "Freshchat Settings",
+	"Genesys": "Genesys WhatsApp Settings",
+}
+
+PROVIDER_BY_SETTINGS = {v: k for k, v in PROVIDER_SETTINGS.items()}
 
 
 def get_public_url(path: str=None, use_ngrok: bool=False):
@@ -26,3 +34,27 @@ def merge_dicts(d1: dict, d2: dict):
 	... {'name1': {'age': 20, 'phone': '+xxx'}, 'name2': {'age': 30, 'phone': '+yyy'}}
 	"""
 	return {k:{**v, **d2.get(k, {})} for k, v in d1.items()}
+
+
+def validate_not_default_provider(doc):
+	"""Prevent disabling a provider that is selected in WhatsApp Settings.
+
+	Called from the `validate` of each provider settings doctype.
+	"""
+	if doc.enabled:
+		return
+
+	provider = PROVIDER_BY_SETTINGS.get(doc.doctype)
+	if not provider:
+		return
+
+	if frappe.db.get_single_value("WhatsApp Settings", "whatsapp_provider") != provider:
+		return
+
+	frappe.throw(
+		frappe._("{0} is set as the WhatsApp Provider in {1} and cannot be disabled. Please select another provider first.").format(
+			frappe.bold(provider),
+			get_link_to_form("WhatsApp Settings", "WhatsApp Settings"),
+		),
+		title=frappe._("Cannot Disable Provider"),
+	)
