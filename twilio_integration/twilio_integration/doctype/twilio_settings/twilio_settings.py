@@ -14,12 +14,13 @@ from json import loads, dumps
 from random import randrange
 
 from twilio.rest import Client
-from ...utils import get_public_url
+from ...utils import get_public_url, validate_not_default_provider
 
 class TwilioSettings(Document):
 	friendly_resource_name = "ERPNext" # System creates TwiML app & API keys with this name.
 
 	def validate(self):
+		validate_not_default_provider(self)
 		self.validate_twilio_account()
 
 	def on_update(self):

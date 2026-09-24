@@ -6,11 +6,15 @@ from frappe.utils import cint
 from frappe.model.document import Document
 from urllib.parse import urljoin
 import requests
+from ...utils import validate_not_default_provider
 
 CACHE_KEY = "genesys_access_token"
 
 
 class GenesysWhatsAppSettings(Document):
+	def validate(self):
+		validate_not_default_provider(self)
+
 	def get_access_token(self):
 		access_token = frappe.cache().get_value(CACHE_KEY)
 		if access_token:
