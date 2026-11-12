@@ -1,0 +1,20 @@
+[project]
+name = "twilio_integration"
+authors = [
+    { name = "ParaLogic", email = "info@paralogic.io"}
+]
+description = "Twilio Integration"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    "twilio==9.5.2",
+    "pyngrok~=6.0.0"
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0,<16.0.0"
