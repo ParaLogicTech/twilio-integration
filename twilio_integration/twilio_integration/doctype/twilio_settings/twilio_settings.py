@@ -8,7 +8,6 @@ from frappe.model.document import Document
 from frappe import _
 from frappe.utils.password import get_decrypted_password
 
-from six import string_types
 import re
 from json import loads, dumps
 from random import randrange
