@@ -83,13 +83,13 @@ class NotificationTwilio(Notification):
 		ref_doctype = get_reference_doctype(doc)
 		ref_name = get_reference_name(doc)
 
-		notification_type = self.get_notification_type()
+		notification_key = self.get_notification_key()
 
-		if notification_type:
+		if notification_key:
 			set_notification_last_scheduled(
 				ref_doctype,
 				ref_name,
-				notification_type,
+				notification_key,
 				"WhatsApp",
 				child_doctype=context.get("child_doctype"),
 				child_name=context.get("child_name"),
@@ -116,7 +116,7 @@ class NotificationTwilio(Notification):
 		WhatsAppMessage.send_whatsapp_message(
 			receiver_list=receiver_list,
 			message=message,
-			notification_type=notification_type,
+			notification_key=notification_key,
 			reference_doctype=ref_doctype,
 			reference_name=ref_name,
 			child_doctype=context.get("child_doctype"),

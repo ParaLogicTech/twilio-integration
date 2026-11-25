@@ -6,7 +6,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "notification_type",
+  "notification_key",
   "profile_name",
   "from_",
   "to",
@@ -122,14 +122,6 @@
    "options": "Communication",
    "read_only": 1,
    "search_index": 1
-  },
-  {
-   "fieldname": "notification_type",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Notification Type",
-   "read_only": 1
   },
   {
    "fieldname": "template_sid",
@@ -324,6 +316,14 @@
    "fieldtype": "Check",
    "label": "Send Media As Body Parameter",
    "read_only": 1
+  },
+  {
+   "fieldname": "notification_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Notification Key",
+   "read_only": 1
   }
  ],
  "grid_page_length": 500,
@@ -331,7 +331,7 @@
  "index_web_pages_for_search": 1,
  "links": [],
  "max_attachments": 1,
- "modified": "2026-08-24 21:53:09.049814",
+ "modified": "2026-11-25 21:23:17.561509",
  "modified_by": "Administrator",
  "module": "Twilio Integration",
  "name": "WhatsApp Message",
