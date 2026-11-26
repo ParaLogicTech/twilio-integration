@@ -4,7 +4,7 @@ authors = [
     { name = "ParaLogic", email = "info@paralogic.io"}
 ]
 description = "Twilio Integration"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
