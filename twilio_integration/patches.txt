@@ -1,4 +1,5 @@
 [pre_model_sync]
+twilio_integration.patches.rename_notification_type_to_notification_key
 
 [post_model_sync]
 twilio_integration.patches.rename_fields_send_on

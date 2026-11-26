@@ -81,7 +81,7 @@ class WhatsAppMessage(Document):
 		cls,
 		receiver_list,
 		message=None,
-		notification_type=None,
+		notification_key=None,
 		reference_doctype=None,
 		reference_name=None,
 		child_doctype=None,
@@ -122,7 +122,7 @@ class WhatsAppMessage(Document):
 		doc = get_doc_for_notification_triggers(reference_doctype, reference_name)
 		run_before_send_method(
 			doc=doc,
-			notification_type=notification_type,
+			notification_key=notification_key,
 			child_doctype=child_doctype,
 			child_name=child_name,
 		)
@@ -143,7 +143,7 @@ class WhatsAppMessage(Document):
 				whatsapp_provider=whatsapp_provider,
 				whatsapp_reply_handler=whatsapp_reply_handler,
 				content_variables=content_variables,
-				notification_type=notification_type,
+				notification_key=notification_key,
 			)
 
 			if not delayed:
@@ -277,7 +277,7 @@ class WhatsAppMessage(Document):
 		whatsapp_provider=None,
 		whatsapp_reply_handler=None,
 		content_variables=None,
-		notification_type=None,
+		notification_key=None,
 	):
 		sender = frappe.db.get_single_value('WhatsApp Settings', 'whatsapp_no')
 		if not sender:
@@ -305,7 +305,7 @@ class WhatsAppMessage(Document):
 			'party': party,
 			'attachment': json.dumps(attachment) if attachment else None,
 			'communication': communication,
-			'notification_type': notification_type,
+			'notification_key': notification_key,
 			'template_sid': template.template_sid or None,
 			'reply_handler': reply_handler or None,
 			'whatsapp_provider': whatsapp_provider or None,
@@ -772,38 +772,38 @@ def outgoing_message_status_callback(args, auto_commit=False):
 
 def run_before_send_method(
 	doc=None,
-	notification_type=None,
+	notification_key=None,
 	child_doctype=None,
 	child_name=None,
 ):
 	from frappe.email.doctype.notification.notification import run_validate_notification
 
-	if doc and notification_type:
+	if doc and notification_key:
 		validation = run_validate_notification(
 			doc,
-			notification_type,
+			notification_key,
 			child_doctype=child_doctype,
 			child_name=child_name,
 			throw=True,
 		)
 		if not validation:
-			frappe.throw(_("{0} Notification Validation Failed").format(notification_type))
+			frappe.throw(_("{0} Notification Validation Failed").format(notification_key))
 
 
 def run_after_send_method(
 	reference_doctype=None,
 	reference_name=None,
-	notification_type=None,
+	notification_key=None,
 	child_doctype=None,
 	child_name=None,
 ):
 	from frappe.core.doctype.notification_count.notification_count import add_notification_count
 
-	if reference_doctype and reference_name and notification_type:
+	if reference_doctype and reference_name and notification_key:
 		add_notification_count(
 			reference_doctype,
 			reference_name,
-			notification_type,
+			notification_key,
 			'WhatsApp',
 			child_doctype=child_doctype,
 			child_name=child_name,
@@ -879,7 +879,7 @@ def send_whatsapp_message(message_doc, auto_commit=True, now=False):
 		doc = get_doc_for_notification_triggers(message_doc.reference_doctype, message_doc.reference_name)
 		run_before_send_method(
 			doc,
-			notification_type=message_doc.notification_type,
+			notification_key=message_doc.notification_key,
 			child_doctype=message_doc.child_doctype,
 			child_name=message_doc.child_name,
 		)
@@ -908,7 +908,7 @@ def send_whatsapp_message(message_doc, auto_commit=True, now=False):
 		run_after_send_method(
 			reference_doctype=message_doc.reference_doctype,
 			reference_name=message_doc.reference_name,
-			notification_type=message_doc.notification_type,
+			notification_key=message_doc.notification_key,
 			child_doctype=message_doc.child_doctype,
 			child_name=message_doc.child_name,
 		)
